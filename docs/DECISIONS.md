@@ -36,7 +36,15 @@ Updated 2026-11-06, Vietnam time. User-approved v2 merge takes precedence over o
 3. Validate that tested Solidity fixture builds exhibit the supported dispatcher pattern. If a golden case differs, report evidence rather than silently editing expected scores.
 4. Verify historical availability for the actual report/target at replay time; select optional archive infrastructure only if needed and authorized.
 
-## Explicitly deferred
+## M0 discovery record — 2026-11-06
+
+- Observed: Windows Node 24.19.0, pnpm 12.4.2, Git 2.51.1.windows.1; Ubuntu 26.04 on WSL2 is available. Foundry is absent from checked WSL PATH/default binary directory and Windows PATH. See ENVIRONMENT.md for commands, limitations and primary sources.
+- Proposed M1 execution split: existing Windows Node/pnpm for web/analyzer, Ubuntu WSL for Foundry. Pin packageManager to pnpm@12.4.2 and use one root lockfile when M1 is authorized. This is a discovery recommendation, not an installation performed or a new user confirmation.
+- Use explicit Cancun EVM target following current Avalanche guidance; keep identical compiler/optimizer/EVM settings in build-info for eventual source verification. Exact Foundry/Solidity and dependency patches must be resolved and recorded before installation. No unobserved version is declared installed or compatible.
+- Reviewed the existing four successful historical RPC samples; did not run a new probe. Per-request historical-state checks and archive-unavailable UI remain mandatory.
+- M0 is complete with Foundry setup and final version resolution identified as M1 prerequisites. No AI provider/model selected. The concrete minimal scaffold and exact proposed checks are in ENVIRONMENT.md; M1 has not started.
+
+## Deferred scope (unchanged)
 
 Transaction interception/simulation, browser extension, automated trading, wallet custody, arbitrary chain scanning, cross-chain messaging, own L1, community voting, ML-based scam verdicts and autonomous LLM tool planning.
 
