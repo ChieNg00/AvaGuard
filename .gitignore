@@ -1,0 +1,24 @@
+# Dependencies and build output
+node_modules/
+.next/
+dist/
+build/
+out/
+cache/
+coverage/
+
+# Local credentials and configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+keystore/
+keystores/
+
+# Local state and logs
+*.log
+.DS_Store
+Thumbs.db
+.vercel/
