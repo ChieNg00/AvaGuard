@@ -49,3 +49,11 @@ Updated 2026-11-06, Vietnam time. User-approved v2 merge takes precedence over o
 Transaction interception/simulation, browser extension, automated trading, wallet custody, arbitrary chain scanning, cross-chain messaging, own L1, community voting, ML-based scam verdicts and autonomous LLM tool planning.
 
 The AI agents and security event category does not itself require an autonomous agent. Describe the MVP honestly as AI-assisted analysis. If autonomy is added later, reopen scope and threat modeling.
+
+## M1 implementation choices — 2026-11-10
+
+- User explicitly authorized Foundry installation and local M1 foundation. Official Foundry v1.9.0 is installed and verified in Ubuntu WSL2. Pin Solidity 0.8.30, Cancun, optimizer enabled/200 runs. See PROGRESS.md for actual outputs.
+- Existing checkout moved to Documents/Codex/AvaGuard. Retain Windows Node 24.19.0/pnpm 12.4.2 plus WSL Foundry. No alternative toolchain.
+- Exact dependency choices and successful strict-peer frozen install are recorded in PROGRESS.md/manifests. One root pnpm-lock.yaml. Use minimal CSS and dependency-free Solidity smoke tests; defer viem/wagmi/Query, Tailwind and OpenZeppelin until affected functionality requires them.
+- M1 schema is a strict foundation envelope only, not a canonical import/publication schema. Explicit null failure scores, chain/snapshot shape, coverage uniqueness and score-band agreement are tested. Full evidence/proxy/canonical hashing remains M2/M3; no golden weights or negative controls changed.
+- No database, wallet setup, deployment or AI provider/model choice. Scan/Lookup shells expose planned/unavailable behavior truthfully. M1 complete; browser interaction/visual QA remains unverified.

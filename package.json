@@ -1,0 +1,22 @@
+{
+  "name": "avaguard",
+  "private": true,
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @avaguard/web dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm exec eslint .",
+    "test": "pnpm exec vitest run",
+    "build": "pnpm --filter @avaguard/web build"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "5.1.0",
+    "eslint": "9.39.1",
+    "eslint-config-next": "16.4.6",
+    "@types/node": "24.19.2"
+  }
+}
