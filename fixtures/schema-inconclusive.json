@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "rulesetVersion": 1,
+  "chainId": "43113",
+  "address": "0x1111111111111111111111111111111111111111",
+  "snapshot": {
+    "blockNumber": "1",
+    "blockHash": "0x2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "codehash": null,
+  "status": "inconclusive",
+  "signalScore": null,
+  "band": null,
+  "reason": "historical-state-unavailable",
+  "coverage": {
+    "checked": [],
+    "notChecked": [
+      {
+        "id": "scanner",
+        "reason": "Synthetic M1 schema fixture. No chain reads performed."
+      }
+    ],
+    "unavailable": [
+      {
+        "id": "historical-state",
+        "reason": "Synthetic unavailable-state example."
+      }
+    ],
+    "notApplicable": []
+  }
+}

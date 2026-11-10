@@ -69,3 +69,9 @@ Root scripts must fail rather than hide missing workspace checks. Analyzer smoke
 - Team capacity and AI provider/model do not block the credential-free M1 shell. No decision on either was invented.
 
 M0 discovery is complete with these explicit setup blockers. M1 has not started.
+
+## M1 observed update — 2026-11-10
+
+The project is now at C:/Users/LENOVO/Documents/Codex/AvaGuard. Foundry 1.9.0 installed from the official foundry.paradigm.xyz/foundry-rs distribution with successful attestations. Forge/Cast/Anvil version output and compiler/test evidence are in PROGRESS.md. Node remains 24.19.0; pnpm remains 12.4.2. Solc 0.8.30 compiled the local fixture with Cancun/optimizer 200 settings. M0 absence statements above are historical observations.
+
+Rechecked https://nextjs.org/docs/app/getting-started/installation (displays 16.4.6, Node >=20.9) and https://build.avax.network/docs/avalanche-l1s/add-utility/deploy-smart-contract (explicit Cancun). Official npm metadata established the exact installed dependency set and peer requirements. https://getfoundry.sh/introduction/installation/ still returned unsupported Markdown in the web tool; installation used the official https://foundry.paradigm.xyz bootstrap and attested foundry-rs releases, not an unofficial mirror. Versions and reproducible commands are in README.md/PROGRESS.md. No new historical-state probe was run.
