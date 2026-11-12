@@ -3,11 +3,11 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { createServer } from "node:net";
 import { readFile } from "node:fs/promises";
-import { encodeAbiParameters, encodeFunctionData, keccak256, toHex, type Hex } from "viem";
+import { decodeFunctionResult, encodeAbiParameters, encodeDeployData, encodeFunctionData, keccak256, toHex, zeroAddress, type Hex } from "viem";
 import { BEACON_SLOT, IMPLEMENTATION_SLOT, buildReport, collectEvidence, createHttpTransport,
-  probeAbi, replayReport, type ReadMethod, type ReadTransport } from "../src/index";
+  canonicalReportJson, probeAbi, replayReport, verifyCommitment, type ReadMethod, type ReadTransport } from "../src/index";
 
-// Explicit opt-in script; starts only a local account-free Anvil, never deploys or signs.
+// Explicit opt-in script; starts a loopback-only Anvil with no generated keys. M4 uses local impersonation.
 const endpoint = "http://127.0.0.1:18545";
 const target = ("0x" + "1".repeat(40)) as Hex;
 const holder = ("0x" + "2".repeat(40)) as Hex;
@@ -188,3 +188,53 @@ for (const [i, [name, score, band, rules]] of golden.entries()) {
       "source-verification", "privileged-access", "custom-dispatch", "unsupported-proxies", "tokenomics", "clone-integration"]));
   }, 45000);
 }
+
+it("publishes an analyzer snapshot and verifies the body against its retrieved commitment", async () => {
+  const vector = await readFile("fixtures/canonical-report-v1.json", "utf8");
+  const vectorHash = "0x9c8945f6c116ecd46025d73b24a000490919db79635485ef2c3da9e1bbcba5cd";
+  expect(keccak256(toHex(vector))).toBe(vectorHash);
+  expect(verifyCommitment(vector, vectorHash).status).toBe("commitment-matches");
+
+  const report = buildReport(await collectEvidence(createHttpTransport(endpoint), { address: target }));
+  if (report.status !== "complete") throw new Error(report.reason);
+  const { body } = report;
+  const publication = {
+    target: body.address, score: body.signalScore, codehash: body.codehash,
+    implementation: body.proxy.implementation ?? zeroAddress, reportHash: report.reportHash,
+    rulesetVersion: body.rulesetVersion, blockNumber: BigInt(body.blockNumber), blockHash: body.blockHash,
+  };
+
+  const artifact = JSON.parse(await readFile("packages/contracts/out/RiskRegistry.sol/RiskRegistry.json", "utf8"));
+  const owner = toHex(7500, { size: 20 });
+  const attester = toHex(7501, { size: 20 });
+  for (const account of [owner, attester]) {
+    await rpc("anvil_impersonateAccount", [account]);
+    await rpc("anvil_setBalance", [account, toHex(10n ** 18n)]);
+  }
+  async function send(from: Hex, data: Hex, to?: Hex) {
+    const hash = await rpc("eth_sendTransaction", [{ from, to, data, gas: toHex(4_000_000) }]);
+    const receipt = await rpc("eth_getTransactionReceipt", [hash]);
+    expect(receipt.status).toBe("0x1");
+    return receipt;
+  }
+  const deployment = await send(owner, encodeDeployData({
+    abi: artifact.abi, bytecode: artifact.bytecode.object, args: [owner],
+  }));
+  const registry = deployment.contractAddress as Hex;
+  const call = (functionName: string, args: unknown[]) => encodeFunctionData({ abi: artifact.abi, functionName, args });
+  await send(owner, call("setAttester", [attester, true]), registry);
+  await send(attester, call("publish", [publication]), registry);
+  async function read(functionName: string, args: unknown[]) {
+    const data = await rpc("eth_call", [{ to: registry, data: call(functionName, args) }, "latest"]);
+    return decodeFunctionResult({ abi: artifact.abi, functionName, data });
+  }
+  const hash = await read("reportHashAt", [target, 0n]);
+  if (typeof hash !== "string") throw new Error("Expected a report hash from the registry");
+  expect(hash).toBe(report.reportHash);
+  const stored = await read("getReport", [hash]);
+  expect(stored).toEqual(await read("latestReport", [target]));
+  expect(stored).toMatchObject({ report: publication, attester: expect.stringMatching(new RegExp(attester, "i")) });
+  expect(verifyCommitment(canonicalReportJson(body), hash).status).toBe("commitment-matches");
+  expect(verifyCommitment(vector, hash).status).toBe("commitment-mismatch");
+  expect(verifyCommitment(null, hash)).toEqual({ status: "report-body-unavailable", body: null });
+}, 45000);

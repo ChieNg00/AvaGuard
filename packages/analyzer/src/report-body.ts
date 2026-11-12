@@ -98,7 +98,13 @@ export function canonicalReportJson(body: ReportBody) {
 export function reportHash(body: ReportBody) {
   return keccak256(stringToHex(canonicalReportJson(body)));
 }
-export function verifyCommitment(json: string, expectedHash: string) {
+type VerifiedBody = { status: "commitment-matches" | "commitment-mismatch"; body: ReportBody };
+type MissingBody = { status: "report-body-unavailable"; body: null };
+
+export function verifyCommitment(json: string, expectedHash: string): VerifiedBody;
+export function verifyCommitment(json: string | null | undefined, expectedHash: string): VerifiedBody | MissingBody;
+export function verifyCommitment(json: string | null | undefined, expectedHash: string) {
+  if (json == null) return { status: "report-body-unavailable", body: null } as const;
   const body = parseReportBody(JSON.parse(json));
   return { status: reportHash(body) === hashSchema.parse(expectedHash.toLowerCase()) ? "commitment-matches" : "commitment-mismatch", body } as const;
 }

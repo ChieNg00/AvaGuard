@@ -199,3 +199,28 @@ All ten used compiled Solidity runtime, local Anvil state, the M2 collector and 
 | `git diff --check` | Exit 0. Git reported line-ending conversion notices. |
 
 To reproduce on a fresh checkout, build the Solidity artifacts in packages/contracts with the pinned Foundry configuration before running the Anvil suite. The runner loads runtime and initializes fixture storage on its own local account-free node. Historical availability on Fuji remains per request. Clone integration, custom dispatcher reachability, unsupported proxy layouts and privileged access control retain their declared coverage limits. No M3 acceptance item remains open.
+
+## Cross-platform Anvil integration runner — 2026-11-13
+
+Windows launches Anvil through Ubuntu WSL2 and reads its Linux PID. Linux launches Anvil from PATH and signals the spawned child directly. Both paths share the same arguments, port preflight and chain-ID check.
+
+On Windows, `pnpm typecheck` exited 0 and `pnpm test` passed all 107 tests. The sandboxed integration run failed during WSL startup (exit 4294967295). With WSL access, `pnpm test:integration` passed all 12 tests. A subsequent loopback bind confirmed port 18545 was free. The test bodies match HEAD. Native Linux execution awaits the GitHub-hosted Ubuntu run.
+
+### M4 local registry — 2026-11-13
+
+Started from `071e87b0665a92c08e5fe172bda0cc992f980a89` on `feat/registry` with an existing progress-note edit. M4 covers local publication, retrieval and canonical body verification.
+
+The publication tuple, trust boundary and lookup API are documented in [the contracts README](../packages/contracts/README.md). The spec left duplicate and snapshot ordering open. M4 rejects a duplicate hash registry-wide, indexes accepted hashes by target in publication order and selects latest by greatest snapshot block, breaking ties by last successful publication.
+
+The locked M3 vector retains its synthetic block 32 and fixed block hash. Its exact bytes hash to `0x9c8945f6c116ecd46025d73b24a000490919db79635485ef2c3da9e1bbcba5cd`. The Anvil test collects a separate ReadProbeFixture report with a real local header and matching target runtime, deploys the registry on its own loopback node, authorizes a distinct impersonated attester and publishes. It reads history by target, compares the retrieved commitment with latest, and checks matching JSON, mismatching JSON and missing body. All transaction code lives in the test.
+
+| Command | Observed local result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` with registry access | Passed with OpenZeppelin Contracts pinned to 5.4.0 in the root lockfile. |
+| WSL `forge fmt --check` | Passed. Initial check saw CRLF differences in four existing fixture/test files. The Solidity-only LF attribute makes Windows checkouts compatible with WSL formatting. Existing fixture source has no content diff. |
+| WSL `forge build --build-info` and `forge test -vv` | Solc 0.8.30 build passed. 16 passed, zero failed/skipped, including 12 registry tests and 256 fuzz runs in the existing read-probe test. Existing fixture lint warnings remain. |
+| `pnpm typecheck`, `pnpm lint`, `pnpm test` | Typecheck and lint exited 0. All 107 unit tests passed. |
+| `pnpm test:integration` with WSL | All 13 Anvil tests passed, including the 10 golden scores and publication/lookup. |
+| `pnpm build` | Passed with workspace build access after sandbox prerender hit EPERM. Production routes /, /lookup and /_not-found were generated. |
+
+M4 local checks passed on Windows with Ubuntu WSL. Hosted CI for these working-tree changes, injected-wallet publication and Fuji deployment remain unverified. UI and public-network work belong to later milestones.
