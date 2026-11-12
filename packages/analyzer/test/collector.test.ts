@@ -1,33 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { encodeFunctionResult, keccak256, toHex, type Hex } from "viem";
+import { keccak256, toHex, type Hex } from "viem";
 import { collectEvidence, collectionSchema, evidenceSchema, classifyRpcError, ReadError,
-  IMPLEMENTATION_SLOT, BEACON_SLOT, ZERO, probeAbi, probeData, minimalImplementation,
-  type ReadMethod, type ReadTransport, type CollectionResult } from "../src/index";
+  IMPLEMENTATION_SLOT, BEACON_SLOT, ZERO, probeData, minimalImplementation,
+  type CollectionResult } from "../src/index";
 
-export const TARGET = ("0x" + "1".repeat(40)) as Hex;
-const IMPL = ("0x" + "2".repeat(40)) as Hex;
-const BEACON = ("0x" + "3".repeat(40)) as Hex;
-const OWNER = ("0x" + "4".repeat(40)) as Hex;
-const HASH = ("0x" + "a".repeat(64)) as Hex;
-const ZERO_WORD = toHex(0n, { size: 32 });
-type Handler = (method: ReadMethod, params: readonly unknown[]) => unknown;
-export function mock(override?: Handler) {
-  const calls: { method: ReadMethod; params: readonly unknown[] }[] = [];
-  const transport: ReadTransport = { async request(method, params) {
-    calls.push({ method, params });
-    const changed = override?.(method, params);
-    if (changed !== undefined) return changed;
-    if (method === "eth_chainId") return "0xa869";
-    if (method === "eth_getBlockByNumber") return { number: "0x20", hash: HASH };
-    if (method === "eth_getCode") return params[0] === OWNER ? "0x" : "0x6000";
-    if (method === "eth_getStorageAt") return ZERO_WORD;
-    const call = params[0] as { data: Hex };
-    const name = (["totalSupply", "balanceOf", "owner", "name", "symbol", "decimals", "implementation"] as const).find(n => probeData(n) === call.data)!;
-    const result = name === "owner" ? OWNER : name === "implementation" ? IMPL : name === "name" ? "Mock" : name === "symbol" ? "MOCK" : name === "decimals" ? 18 : 1000n;
-    return encodeFunctionResult({ abi: probeAbi, functionName: name, result });
-  } };
-  return { calls, transport };
-}
+import { mock, TARGET, IMPL, BEACON, HASH, ZERO_WORD } from "./mock";
 function observed(result: CollectionResult, id: string) { return result.evidence.find(e => e.id === id)!; }
 
 describe("fixed snapshot evidence collection", () => {
@@ -128,6 +105,23 @@ describe("fixed snapshot evidence collection", () => {
     expect(r.status).toBe("not-analyzable"); expect(r.codehash).toBeNull(); expect(r.signalScore).toBeNull();
     expect(m.calls.filter(c => c.method === "eth_getBlockByNumber")).toHaveLength(2);
     expect(m.calls.some(c => c.method === "eth_call")).toBe(false);
+  });
+  it("rejects a self-beacon before calling implementation()", async () => {
+    // The default mock would return IMPL from implementation() and nonempty code for IMPL.
+    const m = mock((method, p) => {
+      if (method === "eth_getStorageAt" && p[0] === TARGET && p[1] === BEACON_SLOT)
+        return toHex(BigInt(TARGET), { size: 32 });
+    });
+    const r = await collectEvidence(m.transport, { address: TARGET });
+    expect(r.proxy.status).toBe("unsupported");
+    expect(r.proxy.reason).toMatch(/self-beacon/i);
+    expect(r.proxy.evidenceIds).toContain("proxy-beacon-slot");
+    expect(observed(r, "proxy-beacon-slot").raw).toBe(toHex(BigInt(TARGET), { size: 32 }));
+    const calls = m.calls.filter(c => c.method === "eth_call").map(c => c.params[0] as { to: Hex; data: Hex });
+    expect(calls.map(c => c.data)).not.toContain(probeData("implementation"));
+    for (const probe of ["totalSupply", "balanceOf", "owner", "name", "symbol", "decimals"] as const)
+      expect(calls).toContainEqual(expect.objectContaining({ to: TARGET, data: probeData(probe) }));
+    expect(r).toMatchObject({ status: "collected", signalScore: null, band: null });
   });
   it.each(["direct", "beacon"] as const)("collects %s dependency and owner code at B; calls TARGET state", async kind => {
     const m = mock((method, p) => {
