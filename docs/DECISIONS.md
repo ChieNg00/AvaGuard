@@ -57,3 +57,11 @@ The AI agents and security event category does not itself require an autonomous 
 - Exact dependency choices and successful strict-peer frozen install are recorded in PROGRESS.md/manifests. One root pnpm-lock.yaml. Use minimal CSS and dependency-free Solidity smoke tests; defer viem/wagmi/Query, Tailwind and OpenZeppelin until affected functionality requires them.
 - M1 schema is a strict foundation envelope only, not a canonical import/publication schema. Explicit null failure scores, chain/snapshot shape, coverage uniqueness and score-band agreement are tested. Full evidence/proxy/canonical hashing remains M2/M3; no golden weights or negative controls changed.
 - No database, wallet setup, deployment or AI provider/model choice. Scan/Lookup shells expose planned/unavailable behavior truthfully. M1 complete; browser interaction/visual QA remains unverified.
+
+## M2 implementation choices — 2026-11-12
+
+- Evidence collection is a separate non-publishable result stage, never a scored report. Null snapshot/chain until actually observed; no invented pre-snapshot data. Per-evidence/per-finding confidence replaces the M1 aggregate requirement.
+- Pin viem 2.57.18; preserve the one-lockfile pnpm workspace and existing compiler/Cancun settings. Fixed probe configuration version 1: zero-address caller, gas 3000000, value 0, max 3 transient attempts, 5s request timeout and 30s overall deadline. Configuration changes must be versioned.
+- Same-B state reads and retries plus final header/hash/network consistency. Explicit historical input never falls back to latest. Optional-method transport failure is not absence or contract behavior.
+- Supported one-hop proxy dependencies only, with explicit unknown/unsupported gaps and exact clone parser-only coverage. Empty slots never prove non-proxy. No privileged access-control inference, rule finding, score or canonical publication hash in M2.
+- Local Anvil regression uses accounts=0 and dev-only runtime/storage initialization, no deployment, wallet or transaction. UI remains validation-only; M3 and later work require a separate request. See M2_EVIDENCE.md and PROGRESS.md for evidence and limitations.

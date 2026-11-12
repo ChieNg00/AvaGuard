@@ -27,18 +27,27 @@ describe("report foundation boundary", () => {
     expect(resultLabel(r)).toBe("Not analyzable");
     expect(reportSchema.safeParse({ ...r, signalScore: 0 }).success).toBe(false);
   });
-  it.each([[0,"Few signals"],[24,"Few signals"],[25,"Some signals"],[59,"Some signals"],[60,"Many signals"],[100,"Many signals"]])("accepts score boundary %s with adjacent coverage/confidence", (signalScore, band) => {
+  it.each([[0,"Few signals"],[24,"Few signals"],[25,"Some signals"],[59,"Some signals"],[60,"Many signals"],[100,"Many signals"]])("accepts score boundary %s with coverage and no findings", (signalScore, band) => {
     const { reason: _reason, ...base } = fixture;
     void _reason;
     expect(reportSchema.safeParse({ ...base, status: "complete", codehash: fixture.snapshot.blockHash,
-      signalScore, band, confidence: ["call-result"] }).success).toBe(true);
+      signalScore, band }).success).toBe(true);
   });
-  it("rejects score/band mismatch and missing confidence", () => {
+  it("rejects score/band mismatch and obsolete aggregate confidence", () => {
     const { reason: _reason, ...base } = fixture;
     void _reason;
-    const complete = { ...base, status: "complete", codehash: fixture.snapshot.blockHash, signalScore: 25, band: "Few signals", confidence: ["call-result"] };
+    const complete = { ...base, status: "complete", codehash: fixture.snapshot.blockHash, signalScore: 25, band: "Few signals" };
     expect(reportSchema.safeParse(complete).success).toBe(false);
     expect(reportSchema.safeParse({ ...complete, band: "Some signals", confidence: [] }).success).toBe(false);
     expect(reportSchema.safeParse({ ...complete, signalScore: 101 }).success).toBe(false);
   });
+});
+
+it("allows no findings, but binds individual finding confidence to linked evidence", () => {
+  const { reason: _reason, ...base } = fixture;
+  void _reason;
+  const complete = { ...base, status: "complete", codehash: fixture.snapshot.blockHash, signalScore: 0, band: "Few signals" };
+  expect(reportSchema.parse(complete).findings).toEqual([]);
+  expect(reportSchema.safeParse({ ...complete, findings: [{ id: "R-TEST", severity: "info", weight: 0,
+    explanation: "Synthetic schema test", evidenceIds: ["missing"], confidence: "call-result" }] }).success).toBe(false);
 });
