@@ -1,7 +1,7 @@
 # AvaGuard ERC20 risk signals on Avalanche
 
 M1 foundation workspace for Team1 Vietnam UniHack 2026. AvaGuard is the working title.
-Status: M1 local web/schema/contract foundation verified on 2026-11-10. Scanner, registry, AI integration and deployment are deferred.
+Status: M2 backend evidence collection verified on 2026-11-12. Full scanner rules, registry, AI integration and deployment are deferred.
 
 ## Confirmed scope
 
@@ -19,7 +19,7 @@ Status: M1 local web/schema/contract foundation verified on 2026-11-10. Scanner,
 2. Read `docs/THREAT_MODEL.md` and `docs/ACCEPTANCE.md` before implementation.
 3. Open this folder as the working project in Codex or Antigravity.
 4. Review the M1 commands and limits below; M0/M1 have been executed.
-5. Request a bounded M2 milestone separately when ready.
+5. Review M2 evidence collection below; request M3 separately when ready.
 
 Codex recognizes AGENTS.md as project guidance. For Antigravity, explicitly ask it to read the file; automatic discovery has not been verified. INIT_PROMPT.md is ordinary portable project text, not a claim about an IDE-specific configuration format.
 
@@ -74,3 +74,13 @@ For a different checkout path, adjust only the `cd` directory. On a new machine,
 The initial lockfile was generated with `pnpm install --lockfile-only` before the successful frozen install. Keep one root `pnpm-lock.yaml`. Exact direct dependencies are pinned in manifests. Wallet/viem, Tailwind, OpenZeppelin and AI dependencies are deferred until needed; basic CSS and dependency-free Solidity tests keep M1 small.
 
 Verified: frozen install, typecheck, warning-free lint after configuration repair, 22 schema tests, production build, Foundry format/build/tests, and HTTP 200 plus SSR limitation-text checks for both routes. Browser interaction/visual QA was not executed; opening the preview tab returned queued. See `docs/PROGRESS.md` for command evidence and remaining scope. Stop at M1; M2 requires a separate request.
+
+## M2 evidence collection — 2026-11-12
+
+The analyzer now provides a bounded same-block read adapter and evidence schema. Results are unscored and always not publishable. See docs/M2_EVIDENCE.md for API/configuration, error handling, proxy gaps and reproducible checks.
+
+New required check: `pnpm test:integration` starts account-free Anvil in Ubuntu WSL2, loads the existing fixture runtime without deploying or sending transactions, tests collection and exact replay, then shuts down its own node. Run the contract build command above first to generate the fixture artifact. Port 18545 must be free. No RPC or AI credentials are needed.
+
+M2 adds pinned viem 2.57.18 for ABI/keccak utilities. The root lockfile was updated before frozen installation. Current checks: 77 unit/mock/schema tests, 2 local Anvil integration tests, existing 2 Forge tests (including 256 fuzz cases), typecheck/lint/build. The UI still validates address input only; full scan/lookup/replay remains unavailable. M1 observations above are historical and do not imply those features were added.
+
+No new live Fuji scans, golden score changes, registry, AI or deployment. M3 is a separate milestone.

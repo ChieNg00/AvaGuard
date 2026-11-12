@@ -9,8 +9,9 @@
     "dev": "pnpm --filter @avaguard/web dev",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm exec eslint .",
-    "test": "pnpm exec vitest run",
-    "build": "pnpm --filter @avaguard/web build"
+    "test": "pnpm exec vitest run --exclude **/*.integration.test.ts",
+    "build": "pnpm --filter @avaguard/web build",
+    "test:integration": "pnpm exec vitest run packages/analyzer/test/anvil.integration.test.ts"
   },
   "devDependencies": {
     "typescript": "5.9.3",

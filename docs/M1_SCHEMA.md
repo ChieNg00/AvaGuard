@@ -1,7 +1,9 @@
-# M1 schema boundary
+# M1 schema boundary and M2 evolution
 
-reportSchema validates a foundation result envelope, not a full deterministic report or a publication/import format. It is deliberately incomplete: evidence/findings, proxy resolution, per-evidence snapshot binding, mandatory coverage IDs, canonical serialization/hash, caller configuration and complete-report publication eligibility are deferred to M2/M3. Do not use it as a trust boundary for report publication.
+The M1 reportSchema remains a scored foundation envelope for regression compatibility, not a canonical publication/import format. It has no rule engine or hashing. Evidence/findings are now typed with individual confidence and reference/snapshot checks. Empty findings and evidence are valid for this skeleton: aggregate confidence is no longer required. Score/band shape checks retained from M1 do not constitute score computation or scoring validation.
 
-Version fields are reserved at 1; finalize the full schema and canonical vector before the first published report. chainId and blockNumber are canonical decimal strings; addresses/hashes must already be lowercase. The local input form normalizes user address input separately. Complete envelopes require score/band agreement and evidence-method confidence. Inconclusive/no-code envelopes use explicit null score and band, never zero. Coverage entry IDs are unique across categories. Historical-state/transport failures are separate from execution reverts; no scanner/error classifier is implemented here.
+M2 adds a separate collectionSchema and collectEvidence API; see M2_EVIDENCE.md. Every collection is explicitly not publishable, has no numeric score/band, and can have no findings. It uses snapshot=null for errors before a valid snapshot exists, rather than supplying fake block data. This is the result type to use for M2, not the legacy reportSchema.
 
-The synthetic JSON fixture contains no actual chain observations. Schema tests exercise structural/status boundaries; they do not validate scoring semantics or any approved golden contract case. SCANNER_SPEC.md remains normative.
+Version fields remain 1 before any published report exists. Finalize the full deterministic report body and canonical vector in M3 before publication. chainId and blockNumber are decimal strings; addresses/hashes are lowercase. No UI/server publication gate should rely on the M1 envelope. SCANNER_SPEC.md remains normative.
+
+The M1 JSON fixture is synthetic, not a Fuji observation. Existing schema/status/band boundary regressions remain, with aggregate-confidence tests updated to the user-requested per-evidence/per-finding model. They do not validate risk interpretation or any approved golden scoring case.
