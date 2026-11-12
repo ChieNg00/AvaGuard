@@ -128,7 +128,11 @@ export async function collectEvidence(transport: ReadTransport, input: { address
         r.proxy.evidenceIds.push(beaconSlot.id);
         let beacon: Hex | null = null;
         try { beacon = slotAddress(beaconSlot.raw as Hex); } catch { unsupported("Beacon slot is not a padded address."); }
-        if (!isUnsupported() && beacon) {
+        if (beacon === address) {
+          r.proxy.kind = "beacon";
+          r.proxy.beacon = beacon;
+          unsupported("Self-beacon: the beacon slot points to the target itself.");
+        } else if (!isUnsupported() && beacon) {
           r.proxy.kind = "beacon"; r.proxy.beacon = beacon;
           const beaconCode = await code("beacon-code", beacon);
           r.proxy.evidenceIds.push(beaconCode.id);

@@ -134,3 +134,19 @@ Collection is not a complete deterministic report or publication eligibility che
 
 Browser interaction/visual QA was not run; UI regression is production build plus HTTP/SSR checks. No account, key, paid provider or AI credential was created. No transaction was sent. Stop after M2; request M3 separately.
 Final review: lint/build and git --work-tree=. diff --check passed after documentation/whitespace cleanup. No changes to SCANNER_SPEC.md or ACCEPTANCE.md; only M2 source/tests, dependency lock/config, UI status text and documentation changed. New files were reviewed; build artifacts and node_modules remain ignored.
+
+### 2026-11-12 — M2 self-beacon review
+
+Inspected HEAD `56de31cbfd7ab85594fbeaa2a9ccdb6d43c51332`. The working tree started clean and `git diff --stat e293627 HEAD` showed identical tracked content. The earlier review recorded 77 passing unit tests and a startup failure before the Anvil assertions ran.
+
+The resolver checked the implementation address for loops only after calling the beacon. A target acting as its own beacon could return a third address with code and appear resolved. The new guard identifies the loop directly from the linked beacon-slot evidence, records the unsupported reason and continues ordinary target probes.
+
+| Command | Result of this review |
+| --- | --- |
+| `pnpm exec vitest run packages/analyzer/test/collector.test.ts -t self-beacon` before the fix | 0 passed, 1 failed, 34 skipped by the name filter. Expected unsupported, received resolved. |
+| `pnpm exec vitest run packages/analyzer/test/collector.test.ts` after the fix | 35 passed, 0 failed, 0 skipped, including direct, beacon, empty, nested, loop and self-beacon cases. |
+| `pnpm typecheck`, `pnpm lint`, `pnpm build` | Each exited 0. |
+| `pnpm test` | 78 passed, 0 failed, 0 skipped. |
+| `pnpm test:integration` | Ran before and after the fix. Both runs executed 2 tests, 2 passed, 0 failed, 0 skipped. Snapshot collection, replay and empty-code assertions ran against local Anvil. |
+
+The existing integration runner succeeded with WSL access in this checkout. The historical startup failure did not recur and its original cause remains unconfirmed. All requested M2 acceptance checks passed.

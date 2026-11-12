@@ -129,6 +129,23 @@ describe("fixed snapshot evidence collection", () => {
     expect(m.calls.filter(c => c.method === "eth_getBlockByNumber")).toHaveLength(2);
     expect(m.calls.some(c => c.method === "eth_call")).toBe(false);
   });
+  it("rejects a self-beacon before calling implementation()", async () => {
+    // The default mock would return IMPL from implementation() and nonempty code for IMPL.
+    const m = mock((method, p) => {
+      if (method === "eth_getStorageAt" && p[0] === TARGET && p[1] === BEACON_SLOT)
+        return toHex(BigInt(TARGET), { size: 32 });
+    });
+    const r = await collectEvidence(m.transport, { address: TARGET });
+    expect(r.proxy.status).toBe("unsupported");
+    expect(r.proxy.reason).toMatch(/self-beacon/i);
+    expect(r.proxy.evidenceIds).toContain("proxy-beacon-slot");
+    expect(observed(r, "proxy-beacon-slot").raw).toBe(toHex(BigInt(TARGET), { size: 32 }));
+    const calls = m.calls.filter(c => c.method === "eth_call").map(c => c.params[0] as { to: Hex; data: Hex });
+    expect(calls.map(c => c.data)).not.toContain(probeData("implementation"));
+    for (const probe of ["totalSupply", "balanceOf", "owner", "name", "symbol", "decimals"] as const)
+      expect(calls).toContainEqual(expect.objectContaining({ to: TARGET, data: probeData(probe) }));
+    expect(r).toMatchObject({ status: "collected", signalScore: null, band: null });
+  });
   it.each(["direct", "beacon"] as const)("collects %s dependency and owner code at B; calls TARGET state", async kind => {
     const m = mock((method, p) => {
       if (method === "eth_getStorageAt" && p[0] === TARGET)
