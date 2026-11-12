@@ -11,7 +11,8 @@
     "lint": "pnpm exec eslint .",
     "test": "pnpm exec vitest run --exclude **/*.integration.test.ts",
     "build": "pnpm --filter @avaguard/web build",
-    "test:integration": "pnpm exec vitest run packages/analyzer/test/anvil.integration.test.ts"
+    "test:integration": "pnpm exec vitest run packages/analyzer/test/anvil.integration.test.ts",
+    "test:browser": "node scripts/browser-check.mjs"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "5.4.0",

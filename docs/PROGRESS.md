@@ -224,3 +224,20 @@ The locked M3 vector retains its synthetic block 32 and fixed block hash. Its ex
 | `pnpm build` | Passed with workspace build access after sandbox prerender hit EPERM. Production routes /, /lookup and /_not-found were generated. |
 
 M4 local checks passed on Windows with Ubuntu WSL. Hosted CI for these working-tree changes, injected-wallet publication and Fuji deployment remain unverified. UI and public-network work belong to later milestones.
+
+## M5 local browser flow — implementation started from e50d2ae
+
+The Scan and Lookup pages now use bounded server reads and the M3 canonical body. Publication uses the injected provider, the compiled M4 ABI, the local registry runtime hash, live permission and the wallet's snapshot hash. A successful receipt must include the matching registry event. The server has no transaction endpoint. Setup and reproduction commands are in [M5_DEMO.md](M5_DEMO.md).
+
+| Local command | Observed result on Windows + Ubuntu WSL, 2026-11-13 |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Passed with a single workspace lockfile. |
+| `pnpm typecheck`, `pnpm lint`, `pnpm build` | All exited 0. The production build completed without a running read RPC. |
+| `pnpm test` | 109 tests passed across five files, including tuple agreement and semantic differences. |
+| `forge fmt --check`, `forge build --build-info`, `forge test -vv` in packages/contracts | All passed. 16 Solidity tests passed. Existing fixture lint warnings remain. |
+| `pnpm test:integration` | 13 Anvil tests passed. The test deployment now polls boundedly for its receipt after an observed pending result. |
+| `pnpm test:browser` after production build and Chromium installation | The filtered browser scenario passed. Empty-code scan, wallet-free MintableToken score 35 and canonical download were observed. Wrong network, conflicting header with the same chain ID and rejected submission were exercised. The app confirmed the local receipt and matching event for transaction `0xae0d5a049fa7ec6fa18fd8f786f86c414b5dc5c7e88c00ef839e43483f5ad1e4`. This hash belongs to the ephemeral test node. |
+| Fresh Chromium context | Empty lookup, latest, history index 0, missing body, malformed JSON, invalid schema, altered valid JSON, matching import, original-block replay, current-state comparison and simulated pruned-state replay passed. |
+| Demo setup syntax | WSL Bash syntax and Foundry keystore options checked. Actual interactive deployer keystore and Core wallet setup remain manual. |
+
+Early Edge runs timed out. Final browser checks used pinned Playwright with its matching Chromium binary and a test-only provider. Hosted Actions and a real wallet extension have not been exercised for this branch. Both existing CI jobs use checkout v7; browser acceptance runs in the existing contracts-and-integration job after Forge artifacts are built.

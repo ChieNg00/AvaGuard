@@ -213,7 +213,12 @@ it("publishes an analyzer snapshot and verifies the body against its retrieved c
   }
   async function send(from: Hex, data: Hex, to?: Hex) {
     const hash = await rpc("eth_sendTransaction", [{ from, to, data, gas: toHex(4_000_000) }]);
-    const receipt = await rpc("eth_getTransactionReceipt", [hash]);
+    let receipt = await rpc("eth_getTransactionReceipt", [hash]);
+    for (let attempt = 0; !receipt && attempt < 30; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      receipt = await rpc("eth_getTransactionReceipt", [hash]);
+    }
+    if (!receipt) throw new Error("Local deployment receipt timed out");
     expect(receipt.status).toBe("0x1");
     return receipt;
   }
@@ -237,4 +242,17 @@ it("publishes an analyzer snapshot and verifies the body against its retrieved c
   expect(verifyCommitment(canonicalReportJson(body), hash).status).toBe("commitment-matches");
   expect(verifyCommitment(vector, hash).status).toBe("commitment-mismatch");
   expect(verifyCommitment(null, hash)).toEqual({ status: "report-body-unavailable", body: null });
-}, 45000);
+  if (process.env.AVAGUARD_BROWSER === "1") {
+    const fixture = toHex(7502, {size:20});
+    await installRuntime("MintableToken",fixture);
+    await rpc("anvil_setStorageAt", [fixture, toHex(0, {size:32}), toHex(BigInt(holder), {size:32})]);
+    await rpc("evm_mine",[]);
+    const browser = spawn(process.execPath, ["apps/web/test/browser.mjs", endpoint, registry, fixture, attester],
+      {stdio: "inherit", windowsHide: true});
+    const code = await new Promise<number | null>((resolve, reject) => {
+      browser.once("error", reject);
+      browser.once("exit", resolve);
+    });
+    expect(code).toBe(0);
+  }
+}, 180000);

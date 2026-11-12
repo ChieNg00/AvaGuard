@@ -1,1 +1,2 @@
 packages/contracts/**/*.sol text eol=lf
+scripts/*.sh text eol=lf

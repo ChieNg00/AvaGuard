@@ -1,6 +1,6 @@
 # Acceptance and evaluation
 
-These are planned APPLICATION checks, not completed tests. Planning files and a read-only historical RPC probe exist; no scanner/registry/UI implementation has been tested. SCANNER_SPEC.md defines v2 behavior.
+These are application acceptance criteria. See PROGRESS.md for observed results by milestone and M5_DEMO.md for local browser reproduction. SCANNER_SPEC.md defines v2 behavior.
 
 ## Analyzer
 

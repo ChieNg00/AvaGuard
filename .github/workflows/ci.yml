@@ -79,3 +79,9 @@ jobs:
 
       - name: Run Anvil integration tests
         run: pnpm test:integration
+
+      - name: Run local browser acceptance
+        run: |
+          pnpm build
+          pnpm --filter @avaguard/web exec playwright-core install --with-deps chromium
+          pnpm test:browser
