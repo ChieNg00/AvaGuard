@@ -1,33 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { encodeFunctionResult, keccak256, toHex, type Hex } from "viem";
+import { keccak256, toHex, type Hex } from "viem";
 import { collectEvidence, collectionSchema, evidenceSchema, classifyRpcError, ReadError,
-  IMPLEMENTATION_SLOT, BEACON_SLOT, ZERO, probeAbi, probeData, minimalImplementation,
-  type ReadMethod, type ReadTransport, type CollectionResult } from "../src/index";
+  IMPLEMENTATION_SLOT, BEACON_SLOT, ZERO, probeData, minimalImplementation,
+  type CollectionResult } from "../src/index";
 
-export const TARGET = ("0x" + "1".repeat(40)) as Hex;
-const IMPL = ("0x" + "2".repeat(40)) as Hex;
-const BEACON = ("0x" + "3".repeat(40)) as Hex;
-const OWNER = ("0x" + "4".repeat(40)) as Hex;
-const HASH = ("0x" + "a".repeat(64)) as Hex;
-const ZERO_WORD = toHex(0n, { size: 32 });
-type Handler = (method: ReadMethod, params: readonly unknown[]) => unknown;
-export function mock(override?: Handler) {
-  const calls: { method: ReadMethod; params: readonly unknown[] }[] = [];
-  const transport: ReadTransport = { async request(method, params) {
-    calls.push({ method, params });
-    const changed = override?.(method, params);
-    if (changed !== undefined) return changed;
-    if (method === "eth_chainId") return "0xa869";
-    if (method === "eth_getBlockByNumber") return { number: "0x20", hash: HASH };
-    if (method === "eth_getCode") return params[0] === OWNER ? "0x" : "0x6000";
-    if (method === "eth_getStorageAt") return ZERO_WORD;
-    const call = params[0] as { data: Hex };
-    const name = (["totalSupply", "balanceOf", "owner", "name", "symbol", "decimals", "implementation"] as const).find(n => probeData(n) === call.data)!;
-    const result = name === "owner" ? OWNER : name === "implementation" ? IMPL : name === "name" ? "Mock" : name === "symbol" ? "MOCK" : name === "decimals" ? 18 : 1000n;
-    return encodeFunctionResult({ abi: probeAbi, functionName: name, result });
-  } };
-  return { calls, transport };
-}
+import { mock, TARGET, IMPL, BEACON, HASH, ZERO_WORD } from "./mock";
 function observed(result: CollectionResult, id: string) { return result.evidence.find(e => e.id === id)!; }
 
 describe("fixed snapshot evidence collection", () => {

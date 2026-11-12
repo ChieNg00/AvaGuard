@@ -150,3 +150,52 @@ The resolver checked the implementation address for loops only after calling the
 | `pnpm test:integration` | Ran before and after the fix. Both runs executed 2 tests, 2 passed, 0 failed, 0 skipped. Snapshot collection, replay and empty-code assertions ran against local Anvil. |
 
 The existing integration runner succeeded with WSL access in this checkout. The historical startup failure did not recur and its original cause remains unconfirmed. All requested M2 acceptance checks passed.
+
+### 2026-11-12 — M3 in progress
+
+Started from clean HEAD fa0586d5ca07a477a54be28eaed01910e6a30ff6. The self-beacon fix and regression are tracked. Baseline pnpm test passed 78 tests. Sandbox WSL returned Wsl/E_ACCESSDENIED during startup. With WSL access pnpm test:integration passed both Anvil tests. Implementing and verifying ruleset 1 against Scanner Spec v2.
+
+### M3 acceptance — 2026-11-12 (Vietnam time)
+
+M3 passed on the current checkout at HEAD `fa0586d5ca07a477a54be28eaed01910e6a30ff6`. Changes are in the working tree. Scanner Spec v2, ruleset 1, configuration 1 and the locked acceptance scores are unchanged.
+
+#### Analyzer API
+
+- `collectEvidence(transport, input)` retains its M2 behavior. `buildReport(collection)` evaluates the completed snapshot locally. Complete reports expose per-finding evidence and confidence, coverage, score, band, canonical body and hash. Inconclusive and empty-code reports retain diagnostics with null score, band and hash.
+- The decoder records instruction offsets and skips PUSH operands. Incomplete PUSH instructions are explicit runtime coverage gaps. A signature match records its selector, PUSH4 offset, EQ offset and source code evidence ID. A comparison within two instructions of PUSH4 in the same linear block indicates a possible entry point. The unreachable-comparison control demonstrates the remaining reachability limitation.
+- Supported proxy resolution selects implementation code for dispatch checks. State probes retain the target address. Direct and beacon ERC-1967 paths have positively linked dependency observations. The self-beacon regression retains independently observed mint and owner signals (35 points). The standard clone test exercises parsing and rule selection using mock state.
+- `R-SOURCE-UNKNOWN` links a scope declaration to the target snapshot. Its confidence field is explicitly null because source verification has no observation method. Other findings carry a method from the ruleset. Import preserves metadata text case. RPC error codes and instruction offsets are decimal strings in canonical JSON.
+- `canonicalReportJson(body)` and `reportHash(body)` select the deterministic fields. `parseReportBody(input)` validates imported structure, references and score consistency. `verifyCommitment(json, expectedHash)` checks the bytes offline. `replayReport(transport, body, expectedHash)` checks the original body commitment and re-collects at its exact block number/hash. Historical failures, mismatches and successful replay have separate outcomes.
+
+#### Golden fixtures
+
+All ten used compiled Solidity runtime, local Anvil state, the M2 collector and the M3 rules. Each test asserts the complete finding ID set, evidence links, score, band and coverage. Every row includes the zero-weight source scope finding.
+
+| Fixture | Expected | Observed | Band | Evidence under test |
+| --- | ---: | ---: | --- | --- |
+| CleanToken | 0 | 0 | Few signals | Successful reads, absent owner interface |
+| MintableToken | 35 | 35 | Some signals | Mint comparison and nonzero owner without code |
+| DecoyConstantToken | 0 | 0 | Few signals | Returns the mint bytes4 constant via a different function |
+| BlacklistFeeToken | 45 | 45 | Some signals | Blacklist and fee comparisons, nonzero owner without code |
+| UpgradeableToken | 60 | 60 | Many signals | Implementation slot, implementation mint comparison, target owner |
+| BeaconProxyToken | 60 | 60 | Many signals | Beacon slot, beacon call, implementation mint comparison, target owner |
+| NoMetadataToken | 0 | 0 | Few signals | Successful required reads, optional metadata failures |
+| NotErc20Contract | 10 | 10 | Few signals | Both required reads revert, one weighted finding |
+| RenouncedMintToken | 25 | 25 | Some signals | Mint comparison and zero owner |
+| ContractOwnerToken | 25 | 25 | Some signals | Mint comparison and deployed owner code |
+
+#### Commands and observed results
+
+| Check | Result |
+| --- | --- |
+| Baseline `pnpm test` / `pnpm test:integration` | 78 unit and 2 Anvil tests passed, including the tracked M2 self-beacon regression. The first sandbox integration startup failed before assertions. A direct WSL probe returned Wsl/E_ACCESSDENIED. The WSL-enabled run passed. |
+| WSL `forge build --build-info` / `forge test -vv` | Solc 0.8.30 compiled the fixtures. Four tests passed, including the decoy selector control and 256 fuzz runs. Forge emitted lint warnings for empty selector stubs, test-initialized storage and the intentional bytes4 cast. |
+| Initial three-fixture Anvil run | CleanToken 0, MintableToken 35 and DecoyConstantToken 0 passed, nine tests excluded by the explicit filter. |
+| `pnpm typecheck` / `pnpm lint` | Both exited 0. Final lint was clean after removing an unused test import. |
+| `pnpm test` | Four files, 107 passed. Controls cover dispatcher windows and boundaries, truncated PUSH, the cap, duplicate weighting, evidence sufficiency, self-beacon, clone, RPC failures, canonicalization, import and replay. |
+| `pnpm test:integration` with WSL access | Twelve passed, zero skipped. Includes ten golden fixtures, original-block collection through scored report and replay of the compiled ReadProbeFixture, and empty-code handling. |
+| `pnpm build` | Production build and static routes passed. An additional sandbox run hit EPERM creating a prerender directory under .next. A rerun with workspace build access completed all routes. |
+| Foundry `cast keccak < fixtures/canonical-report-v1.json` | Independently matched the fixed vector digest `0x9c8945f6c116ecd46025d73b24a000490919db79635485ef2c3da9e1bbcba5cd`. The file contains the exact canonical UTF-8 bytes. |
+| `git diff --check` | Exit 0. Git reported line-ending conversion notices. |
+
+To reproduce on a fresh checkout, build the Solidity artifacts in packages/contracts with the pinned Foundry configuration before running the Anvil suite. The runner loads runtime and initializes fixture storage on its own local account-free node. Historical availability on Fuji remains per request. Clone integration, custom dispatcher reachability, unsupported proxy layouts and privileged access control retain their declared coverage limits. No M3 acceptance item remains open.

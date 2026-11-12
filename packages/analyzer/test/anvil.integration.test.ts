@@ -3,7 +3,8 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { encodeAbiParameters, encodeFunctionData, keccak256, toHex, type Hex } from "viem";
-import { collectEvidence, createHttpTransport, probeAbi, type ReadMethod, type ReadTransport } from "../src/index";
+import { BEACON_SLOT, IMPLEMENTATION_SLOT, buildReport, collectEvidence, createHttpTransport,
+  probeAbi, replayReport, type ReadMethod, type ReadTransport } from "../src/index";
 
 // Explicit opt-in script; starts only a local account-free Anvil, never deploys or signs.
 const endpoint = "http://127.0.0.1:18545";
@@ -79,9 +80,82 @@ it("collects compiled fixture code/storage/calls at B and replays the exact snap
   expect(BigInt(holderBalance as Hex)).toBe(1000n);
   const replay = await collectEvidence(http, { address: target, historical: r.snapshot! });
   expect(replay).toEqual(r);
+  const report = buildReport(r);
+  expect(report.signalScore).toBe(0);
+  if (report.status !== "complete") throw new Error(report.reason);
+  expect(await replayReport(http, report.body, report.reportHash)).toEqual({ status: "replay-matches", reportHash: report.reportHash });
 }, 45000);
 it("returns not-analyzable for an empty local address, never a score", async () => {
   const r = await collectEvidence(createHttpTransport(endpoint), { address: "0x" + "9".repeat(40) });
   expect(r.status).toBe("not-analyzable");
   expect(r.signalScore).toBeNull();
+  expect(buildReport(r)).toMatchObject({ status: "not-analyzable", signalScore: null, band: null });
 }, 45000);
+
+const golden = [
+  ["CleanToken", 0, "Few signals", []],
+  ["MintableToken", 35, "Some signals", ["R-MINT", "R-OWNER-EOA"]],
+  ["DecoyConstantToken", 0, "Few signals", []],
+  ["BlacklistFeeToken", 45, "Some signals", ["R-BLACKLIST", "R-FEE", "R-OWNER-EOA"]],
+  ["UpgradeableToken", 60, "Many signals", ["R-MINT", "R-OWNER-EOA", "R-PROXY"]],
+  ["BeaconProxyToken", 60, "Many signals", ["R-MINT", "R-OWNER-EOA", "R-PROXY"]],
+  ["NoMetadataToken", 0, "Few signals", ["R-METADATA-ABSENT"]],
+  ["NotErc20Contract", 10, "Few signals", ["R-METADATA-ABSENT", "R-NONSTANDARD"]],
+  ["RenouncedMintToken", 25, "Some signals", ["R-MINT", "R-OWNER-RENOUNCED"]],
+  ["ContractOwnerToken", 25, "Some signals", ["R-MINT", "R-OWNER-CONTRACT"]],
+] as const;
+
+async function installRuntime(name: string, address: Hex) {
+  const artifact = JSON.parse(await readFile("packages/contracts/out/GoldenFixtures.sol/" + name + ".json", "utf8"));
+  await rpc("anvil_setCode", [address, artifact.deployedBytecode.object]);
+}
+const goldenRefs: Record<string, string[]> = {
+  "R-MINT": ["dispatch-mint(address,uint256)"], "R-BLACKLIST": ["dispatch-blacklist(address)"],
+  "R-FEE": ["dispatch-setFee(uint256)"], "R-OWNER-EOA": ["owner", "owner-code"],
+  "R-OWNER-CONTRACT": ["owner", "owner-code"], "R-OWNER-RENOUNCED": ["owner"],
+  "R-METADATA-ABSENT": ["metadata-decimals", "metadata-name", "metadata-symbol"],
+  "R-NONSTANDARD": ["balance-zero", "total-supply"], "R-SOURCE-UNKNOWN": ["source-scope"],
+};
+for (const [i, [name, score, band, rules]] of golden.entries()) {
+  it(name + " scores " + score + " from compiled runtime and target state", async () => {
+    const address = toHex(4096 + i, { size: 20 });
+    const impl = toHex(8192, { size: 20 });
+    const beacon = toHex(8193, { size: 20 });
+    const slot0 = toHex(0, { size: 32 });
+    const setAddress = (account: Hex, slot: Hex, value: Hex) =>
+      rpc("anvil_setStorageAt", [account, slot, toHex(BigInt(value), { size: 32 })]);
+    await installRuntime(name, address);
+    if (name === "UpgradeableToken" || name === "BeaconProxyToken") {
+      await installRuntime("MintableToken", impl);
+      if (name === "UpgradeableToken") await setAddress(address, IMPLEMENTATION_SLOT, impl);
+      else {
+        await installRuntime("FixtureBeacon", beacon);
+        await setAddress(beacon, slot0, impl);
+        await setAddress(address, BEACON_SLOT, beacon);
+      }
+    }
+    if (rules.some(id => id === "R-OWNER-EOA")) await setAddress(address, slot0, holder);
+    if (name === "ContractOwnerToken") await setAddress(address, slot0, target);
+    await rpc("evm_mine", []);
+    const r = buildReport(await collectEvidence(createHttpTransport(endpoint), { address }));
+    expect(r.status).toBe("complete");
+    if (r.status !== "complete") throw new Error(r.reason);
+    expect(r.signalScore).toBe(score);
+    expect(r.band).toBe(band);
+    expect(r.findings.map(f => f.id)).toEqual([...rules, "R-SOURCE-UNKNOWN"].sort());
+    for (const f of r.findings) {
+      const proxyRefs = ["target-code", "proxy-implementation-slot", "implementation-code",
+        "implementation-nested-slot", "implementation-nested-beacon"];
+      if (name === "BeaconProxyToken") proxyRefs.push("proxy-beacon-slot", "beacon-code", "beacon-implementation");
+      expect(f.evidenceIds).toEqual(f.id === "R-PROXY" ? proxyRefs.sort() : goldenRefs[f.id]);
+      for (const id of f.evidenceIds) {
+        const evidence = r.evidence.find(e => e.id === id);
+        expect(evidence).toBeDefined();
+        if (id.startsWith("dispatch-")) expect(evidence?.sourceEvidenceId).toBe(r.proxy.status === "resolved" ? "implementation-code" : "target-code");
+      }
+    }
+    expect(r.coverage.checked.map(c => c.id)).toEqual(expect.arrayContaining(["dispatcher", "rules"]));
+    expect(r.coverage.notChecked.map(c => c.id)).toEqual(expect.arrayContaining([
+      "source-verification", "privileged-access", "custom-dispatch", "unsupported-proxies", "tokenomics", "clone-integration"]));
+  }, 45000);
+}
