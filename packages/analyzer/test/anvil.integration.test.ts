@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
+import { createServer } from "node:net";
 import { readFile } from "node:fs/promises";
 import { encodeAbiParameters, encodeFunctionData, keccak256, toHex, type Hex } from "viem";
 import { BEACON_SLOT, IMPLEMENTATION_SLOT, buildReport, collectEvidence, createHttpTransport,
@@ -10,7 +11,10 @@ import { BEACON_SLOT, IMPLEMENTATION_SLOT, buildReport, collectEvidence, createH
 const endpoint = "http://127.0.0.1:18545";
 const target = ("0x" + "1".repeat(40)) as Hex;
 const holder = ("0x" + "2".repeat(40)) as Hex;
-let process: ChildProcess | undefined;
+const useWsl = process.platform === "win32";
+const args = ["--accounts", "0", "--silent", "--chain-id", "43113", "--hardfork", "cancun", "--host", "127.0.0.1", "--port", "18545"];
+let anvilProcess: ChildProcess | undefined;
+let anvilClosed: Promise<void> | undefined;
 let anvilPid: string | undefined;
 let rpcId = 0;
 async function rpc(method: string, params: unknown[]) {
@@ -21,28 +25,46 @@ async function rpc(method: string, params: unknown[]) {
   return r.result;
 }
 beforeAll(async () => {
-  if (globalThis.process.platform !== "win32") throw new Error("This integration runner expects Windows + Ubuntu WSL2");
   // Refuse an existing listener: no accidental writes to somebody else's local node.
-  try { await fetch(endpoint, { signal: AbortSignal.timeout(300) }); throw new Error("Port 18545 is already in use"); }
-  catch (error) { if (error instanceof Error && error.message === "Port 18545 is already in use") throw error; }
-  process = spawn("wsl.exe", ["-d", "Ubuntu", "--exec", "bash", "-c",
-    "echo $$; exec ~/.foundry/bin/anvil --accounts 0 --silent --chain-id 43113 --hardfork cancun --host 127.0.0.1 --port 18545"],
-    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-  let output = "";
-  process.stdout!.on("data", chunk => {
-    output += String(chunk);
-    anvilPid = /^([0-9]+)\r?\n/.exec(output)?.[1];
+  await new Promise<void>((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(18545, "127.0.0.1", () => server.close(error => error ? reject(error) : resolve()));
   });
-  let startupError = false;
-  process.on("error", () => { startupError = true; });
+  anvilProcess = useWsl
+    ? spawn("wsl.exe", ["-d", "Ubuntu", "--exec", "bash", "-c",
+      'echo $$; exec ~/.foundry/bin/anvil "$@"', "anvil", ...args], { windowsHide: true })
+    : spawn("anvil", args);
+  anvilClosed = new Promise(resolve => anvilProcess!.once("close", () => resolve()));
+  if (useWsl) {
+    let output = "";
+    anvilProcess.stdout!.on("data", chunk => {
+      output += String(chunk);
+      anvilPid = /^([0-9]+)\r?\n/.exec(output)?.[1];
+    });
+  }
+  let stderr = "";
+  anvilProcess.stderr!.on("data", chunk => { stderr += String(chunk); });
+  let startupError: Error | undefined;
+  anvilProcess.on("error", error => { startupError = error; });
   const deadline = Date.now() + 30000;
   let ready = false;
+  let lastError: unknown;
   while (Date.now() < deadline) {
-    if (startupError || process.exitCode !== null) throw new Error("Owned Anvil process exited during startup");
-    try { if (await rpc("eth_chainId", []) === "0xa869" && anvilPid) { ready = true; break; } } catch {}
+    if (startupError) throw startupError;
+    if (anvilProcess.exitCode !== null || anvilProcess.signalCode !== null) {
+      await anvilClosed;
+      throw new Error(`Anvil exited during startup (${anvilProcess.signalCode ?? anvilProcess.exitCode}): ${stderr.trim()}`);
+    }
+    try {
+      const chainId = await rpc("eth_chainId", []);
+      if (chainId !== "0xa869") throw new Error(`Unexpected eth_chainId: ${chainId}`);
+      if (!useWsl || anvilPid) { ready = true; break; }
+      lastError = new Error("Waiting for Anvil PID from wsl.exe");
+    } catch (error) { lastError = error; }
     await new Promise(resolve => setTimeout(resolve, 250));
   }
-  if (!ready) throw new Error("Owned Anvil did not become ready");
+  if (!ready) throw new Error("Anvil readiness timed out at " + endpoint, { cause: lastError });
   const artifact = JSON.parse(await readFile("packages/contracts/out/ReadProbeFixture.sol/ReadProbeFixture.json", "utf8"));
   let runtime: string = artifact.deployedBytecode.object;
   const refs = Object.values(artifact.deployedBytecode.immutableReferences) as { start: number; length: number }[][];
@@ -57,8 +79,15 @@ beforeAll(async () => {
   await rpc("evm_mine", []);
 }, 45000);
 afterAll(async () => {
-  if (anvilPid) await promisify(execFile)("wsl.exe", ["-d", "Ubuntu", "--exec", "kill", "-TERM", anvilPid], { windowsHide: true });
-  process?.kill();
+  if (!anvilProcess) return;
+  try {
+    if (useWsl && anvilPid && anvilProcess.exitCode === null && anvilProcess.signalCode === null) {
+      await promisify(execFile)("wsl.exe", ["-d", "Ubuntu", "--exec", "kill", "-TERM", anvilPid], { windowsHide: true });
+    }
+  } finally {
+    if (anvilProcess.pid && anvilProcess.exitCode === null && anvilProcess.signalCode === null) anvilProcess.kill();
+    await anvilClosed;
+  }
 });
 it("collects compiled fixture code/storage/calls at B and replays the exact snapshot without a transaction", async () => {
   expect(await rpc("eth_accounts", [])).toEqual([]);
