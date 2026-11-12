@@ -14,6 +14,7 @@
     "test:integration": "pnpm exec vitest run packages/analyzer/test/anvil.integration.test.ts"
   },
   "devDependencies": {
+    "@openzeppelin/contracts": "5.4.0",
     "typescript": "5.9.3",
     "vitest": "5.1.0",
     "eslint": "9.39.1",
