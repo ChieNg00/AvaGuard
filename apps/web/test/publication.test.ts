@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  createPublicClient,
+  custom,
   encodeAbiParameters,
   encodeEventTopics,
   keccak256,
@@ -1293,4 +1295,399 @@ it("validates transaction identity, rejects corrupt replacement candidates, and 
     status: "pending",
     message: expect.stringMatching(/Wallet network changed while reading/),
   });
+});
+
+it("refuses wait:true onReplaced when submission.nonce is unverified and eth_getTransactionByHash(A) omits hash (real viem client)", async () => {
+  const hashB = ("0x" + "b".repeat(64)) as Hex;
+  const block32Hash = makeSubmission().blockHash;
+  const block33Hash = ("0x" + "d".repeat(64)) as Hex;
+  const rHex = ("0x" + "1".repeat(64)) as Hex;
+  const sHex = ("0x" + "2".repeat(64)) as Hex;
+  const zeroBloom = ("0x" + "0".repeat(512)) as Hex;
+  const emptyLogsRoot = ("0x" + "0".repeat(64)) as Hex;
+
+  async function runScenario({ includeOrigHash }: { includeOrigHash: boolean }) {
+    const submission = makeSubmission(); // attester set, nonce undefined
+    const seenMethods: string[] = [];
+    const client = createPublicClient({
+      pollingInterval: 10,
+      transport: custom({
+        async request({ method, params }) {
+          seenMethods.push(method);
+          const args = Array.isArray(params) ? params : [];
+          if (method === "eth_chainId") return "0xa869";
+          if (method === "eth_blockNumber") return "0x21";
+          if (method === "eth_getCode") return runtimeCode;
+          if (method === "eth_getTransactionReceipt") {
+            const reqHash = String(args[0] ?? "").toLowerCase();
+            if (reqHash === txHash.toLowerCase()) return null;
+            if (reqHash === hashB.toLowerCase()) {
+              return {
+                blockHash: block33Hash,
+                blockNumber: "0x21",
+                contractAddress: null,
+                cumulativeGasUsed: "0x5208",
+                effectiveGasPrice: "0x1",
+                from: attester,
+                gasUsed: "0x5208",
+                logs: [],
+                logsBloom: zeroBloom,
+                status: "0x1",
+                to: otherAddress,
+                transactionHash: hashB,
+                transactionIndex: "0x0",
+                type: "0x0",
+              };
+            }
+            return null;
+          }
+          if (method === "eth_getTransactionByHash") {
+            const reqHash = String(args[0] ?? "").toLowerCase();
+            if (reqHash === txHash.toLowerCase()) {
+              return {
+                ...(includeOrigHash ? { hash: txHash } : {}),
+                blockHash: null,
+                blockNumber: null,
+                from: attester,
+                gas: "0x5208",
+                gasPrice: "0x1",
+                input: "0x",
+                nonce: "0x7",
+                r: rHex,
+                s: sHex,
+                to: registry,
+                transactionIndex: null,
+                type: "0x0",
+                v: "0x1b",
+                value: "0x0",
+              };
+            }
+            return null;
+          }
+          if (method === "eth_getBlockByNumber") {
+            const blockNum = String(args[0] ?? "").toLowerCase();
+            const includeTxs = Boolean(args[1]);
+            if (blockNum === "0x20") {
+              return {
+                hash: block32Hash,
+                number: "0x20",
+                parentHash: emptyLogsRoot,
+                nonce: "0x0000000000000000",
+                sha3Uncles: emptyLogsRoot,
+                logsBloom: zeroBloom,
+                transactionsRoot: emptyLogsRoot,
+                stateRoot: emptyLogsRoot,
+                receiptsRoot: emptyLogsRoot,
+                miner: zeroAddress,
+                difficulty: "0x0",
+                extraData: "0x",
+                size: "0x0",
+                gasLimit: "0x1c9c380",
+                gasUsed: "0x0",
+                timestamp: "0x65",
+                transactions: [],
+                uncles: [],
+              };
+            }
+            if (blockNum === "0x21") {
+              return {
+                hash: block33Hash,
+                number: "0x21",
+                parentHash: block32Hash,
+                nonce: "0x0000000000000000",
+                sha3Uncles: emptyLogsRoot,
+                logsBloom: zeroBloom,
+                transactionsRoot: emptyLogsRoot,
+                stateRoot: emptyLogsRoot,
+                receiptsRoot: emptyLogsRoot,
+                miner: zeroAddress,
+                difficulty: "0x0",
+                extraData: "0x",
+                size: "0x0",
+                gasLimit: "0x1c9c380",
+                gasUsed: "0x5208",
+                timestamp: "0x66",
+                transactions: includeTxs
+                  ? [
+                      {
+                        blockHash: block33Hash,
+                        blockNumber: "0x21",
+                        from: attester,
+                        gas: "0x5208",
+                        gasPrice: "0x2",
+                        hash: hashB,
+                        input: "0x1234",
+                        nonce: "0x7",
+                        r: rHex,
+                        s: sHex,
+                        to: otherAddress,
+                        transactionIndex: "0x0",
+                        type: "0x0",
+                        v: "0x1b",
+                        value: "0x0",
+                      },
+                    ]
+                  : [],
+                uncles: [],
+              };
+            }
+          }
+          throw new Error(`Unexpected RPC method in test: ${method}`);
+        },
+      }),
+    });
+
+    const outcome = await verifySubmissionReceipt({
+      reader: client,
+      checkContext: okContext,
+      submission,
+      wait: true,
+      timeoutMs: 5000,
+    });
+    return { client, submission, outcome, seenMethods };
+  }
+
+  // Missing orig.hash when submission.nonce is unverified must never announce B as replacement.
+  const missingOrigHash = await runScenario({ includeOrigHash: false });
+  expect(missingOrigHash.seenMethods).toContain("eth_getTransactionByHash");
+  expect(missingOrigHash.seenMethods).not.toContain("eth_sendTransaction");
+  expect(missingOrigHash.seenMethods).not.toContain("eth_sendRawTransaction");
+  expect(missingOrigHash.outcome).toMatchObject({
+    status: "unavailable",
+    message: expect.stringMatching(/Check receipt/i),
+  });
+
+  // Subsequent Check receipt (read-only wait: false) also refuses to announce B and sends no transaction.
+  const recheckWhileMissing = await verifySubmissionReceipt({
+    reader: missingOrigHash.client,
+    checkContext: okContext,
+    submission: missingOrigHash.submission,
+    wait: false,
+  });
+  expect(recheckWhileMissing.status).toBe("unavailable");
+  expect(missingOrigHash.seenMethods).not.toContain("eth_sendTransaction");
+  expect(missingOrigHash.seenMethods).not.toContain("eth_sendRawTransaction");
+
+  // Positive control differing only by returning hash: A proves full wait:true replacement detection.
+  const withOrigHash = await runScenario({ includeOrigHash: true });
+  expect(withOrigHash.outcome).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash: hashB,
+  });
+});
+
+it("enforces evidence-source rules for wait:true onReplaced across unverified and verified submission.nonce", async () => {
+  const hashB = ("0x" + "b".repeat(64)) as Hex;
+  const hashC = ("0x" + "c".repeat(64)) as Hex;
+  const baseSubmission = makeSubmission();
+  const receiptB: ReceiptLike = {
+    status: "success",
+    transactionHash: hashB,
+    logs: [],
+  };
+
+  async function runOnReplaced(
+    submission: Submission,
+    info: Parameters<
+      NonNullable<Parameters<ReceiptReader["waitForTransactionReceipt"]>[0]["onReplaced"]>
+    >[0],
+    returnedReceipt: ReceiptLike = receiptB,
+  ) {
+    return verifySubmissionReceipt({
+      reader: makeReader({
+        async waitForTransactionReceipt({ onReplaced }) {
+          onReplaced?.(info);
+          return returnedReceipt;
+        },
+      }),
+      checkContext: okContext,
+      submission,
+      wait: true,
+    });
+  }
+
+  // When submission.nonce is unverified, replacedTransaction must prove hash=A, from=attester, nonce=B.nonce.
+  expect(
+    (
+      await runOnReplaced(baseSubmission, {
+        reason: "replaced",
+        replacedTransaction: undefined,
+        transaction: { hash: hashB, from: attester, nonce: 7 },
+        transactionReceipt: receiptB,
+      })
+    ).status,
+  ).toBe("unavailable");
+
+  expect(
+    (
+      await runOnReplaced(baseSubmission, {
+        reason: "replaced",
+        replacedTransaction: { from: attester, nonce: 7 },
+        transaction: { hash: hashB, from: attester, nonce: 7 },
+        transactionReceipt: receiptB,
+      })
+    ).status,
+  ).toBe("unavailable");
+
+  expect(
+    (
+      await runOnReplaced(baseSubmission, {
+        reason: "replaced",
+        replacedTransaction: { hash: txHash, from: otherAddress, nonce: 7 },
+        transaction: { hash: hashB, from: attester, nonce: 7 },
+        transactionReceipt: receiptB,
+      })
+    ).status,
+  ).toBe("unavailable");
+
+  expect(
+    (
+      await runOnReplaced(baseSubmission, {
+        reason: "replaced",
+        replacedTransaction: { hash: txHash, from: attester, nonce: 8 },
+        transaction: { hash: hashB, from: attester, nonce: 7 },
+        transactionReceipt: receiptB,
+      })
+    ).status,
+  ).toBe("unavailable");
+
+  // Case-insensitive A and attester with valid proof succeed (speed-up/cancel allowed).
+  expect(
+    await runOnReplaced(baseSubmission, {
+      reason: "cancelled",
+      replacedTransaction: {
+        hash: ("0x" + txHash.slice(2).toUpperCase()) as Hex,
+        from: attester.toLowerCase() as Address,
+        nonce: 7,
+      },
+      transaction: {
+        hash: ("0x" + hashB.slice(2).toUpperCase()) as Hex,
+        from: attester.toUpperCase().replace("0X", "0x") as Address,
+        nonce: 7,
+      },
+      transactionReceipt: receiptB,
+    }),
+  ).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash: hashB,
+  });
+
+  // When submission.nonce IS verified, use verified sender/nonce even if replacedTransaction is omitted,
+  // unless callback carries contradictory original data or invalid/mismatched replacement proof.
+  const verifiedSubmission: Submission = { ...baseSubmission, nonce: 7 };
+  expect(
+    await runOnReplaced(verifiedSubmission, {
+      reason: "replaced",
+      replacedTransaction: undefined,
+      transaction: { hash: hashB, from: attester, nonce: 7 },
+      transactionReceipt: receiptB,
+    }),
+  ).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash: hashB,
+  });
+
+  expect(
+    await runOnReplaced(verifiedSubmission, {
+      reason: "replaced",
+      replacedTransaction: { from: attester, nonce: 7 },
+      transaction: { hash: hashB, from: attester, nonce: 7 },
+      transactionReceipt: receiptB,
+    }),
+  ).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash: hashB,
+  });
+
+  for (const contradictoryOrig of [
+    { hash: hashC, from: attester, nonce: 7 },
+    { hash: "" as Hex, from: attester, nonce: 7 },
+    { hash: txHash, from: otherAddress, nonce: 7 },
+    { hash: txHash, from: attester, nonce: 8 },
+    { hash: txHash, from: attester, nonce: -1 },
+    null as unknown as { hash?: Hex },
+  ]) {
+    expect(
+      (
+        await runOnReplaced(verifiedSubmission, {
+          reason: "replaced",
+          replacedTransaction: contradictoryOrig,
+          transaction: { hash: hashB, from: attester, nonce: 7 },
+          transactionReceipt: receiptB,
+        })
+      ).status,
+    ).toBe("unavailable");
+  }
+
+  // Mismatched B sender/nonce or B===A or mismatched receipt hash still rejected.
+  expect(
+    (
+      await runOnReplaced(verifiedSubmission, {
+        reason: "replaced",
+        replacedTransaction: { hash: txHash, from: attester, nonce: 7 },
+        transaction: { hash: hashB, from: otherAddress, nonce: 7 },
+        transactionReceipt: receiptB,
+      })
+    ).status,
+  ).toBe("unavailable");
+
+  expect(
+    (
+      await runOnReplaced(verifiedSubmission, {
+        reason: "replaced",
+        replacedTransaction: { hash: txHash, from: attester, nonce: 7 },
+        transaction: { hash: hashB, from: attester, nonce: 8 },
+        transactionReceipt: receiptB,
+      })
+    ).status,
+  ).toBe("unavailable");
+
+  expect(
+    (
+      await runOnReplaced(
+        verifiedSubmission,
+        {
+          reason: "replaced",
+          replacedTransaction: { hash: txHash, from: attester, nonce: 7 },
+          transaction: { hash: hashC, from: attester, nonce: 7 },
+          transactionReceipt: receiptB,
+        },
+        receiptB,
+      )
+    ).status,
+  ).toBe("unavailable");
+
+  expect(
+    (
+      await runOnReplaced(
+        verifiedSubmission,
+        {
+          reason: "replaced",
+          replacedTransaction: { hash: txHash, from: attester, nonce: 7 },
+          transaction: { hash: hashB, from: attester, nonce: 7 },
+          transactionReceipt: { transactionHash: hashC, status: "success" },
+        },
+        receiptB,
+      )
+    ).status,
+  ).toBe("unavailable");
+
+  expect(
+    (
+      await runOnReplaced(
+        verifiedSubmission,
+        {
+          reason: "replaced",
+          replacedTransaction: { hash: txHash, from: attester, nonce: 7 },
+          transaction: { hash: hashB, from: attester, nonce: 7 },
+          transactionReceipt: { transactionHash: hashB, status: "reverted" },
+        },
+        receiptB,
+      )
+    ).status,
+  ).toBe("unavailable");
 });

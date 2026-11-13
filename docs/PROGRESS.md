@@ -280,5 +280,23 @@ Early Edge runs timed out. Final browser checks used pinned Playwright with its 
 | `pnpm test:browser` | Exited 0 (`publishes an analyzer snapshot and verifies the body against its retrieved commitment`: 1 passed / 12 filtered-skipped, exercising full M5 flow, contradictory `mismatched-hash`, `missing-hash`, competing-nonce race, `A -> B -> A` discard/recovery, `viem` replacement, and post-timeout Anvil replacement). |
 | `git diff --check` | Exited 0. |
 
-- **Hosted CI vs local state**: GitHub Actions run `43347475910` (`workspace-checks` and `contracts-and-integration`) passed on the older commit `24c1ac1`; commit `5bfcadb` and the uncommitted working-tree changes (`apps/web/app/publish.tsx`, `apps/web/lib/receipt.ts`, `apps/web/test/browser.mjs`, `apps/web/test/publication.test.ts`, `docs/PROGRESS.md`) are only verified locally and have not yet been committed, pushed, or run on hosted CI.
+- **Hosted CI vs local state**: GitHub Actions run `43347475910` (`workspace-checks` and `contracts-and-integration`) passed on the older commit `24c1ac1`; commit `5bfcadb` and `f769712` are only verified locally and have not yet run on hosted CI.
 - **Remaining manual checks**: interactive Core wallet smoke test on local Anvil (see [M5_DEMO.md](M5_DEMO.md)), maintainer review + commit/push on `codex/m5-local-flow` and final PR #6 SHA CI verification before merging, then starting M6.
+
+## M5 PR #6 callback replacement classification fix — working tree on `f769712`
+
+- **P2 `wait: true` `onReplaced` evidence-source hardening**: updated `classifyReplacedFromEvent` in `apps/web/lib/receipt.ts`. When `submission.nonce` is unverified (`undefined`), `replacedTransaction` must pass `validateSubmittedTransaction` (requiring valid case-insensitive `hash === A`, `from === attester`, and non-negative integer `nonce === tx.nonce`); missing `orig.hash` no longer passes `origHashMatches`. When `submission.nonce` is already verified, that verified `attester` + `nonce` validates replacement `tx`, while contradictory `replacedTransaction` or `transactionReceipt` metadata returns retryable `unavailable`. Valid speed-up/cancel replacements (`to`/`input`/`value` differences) remain supported, hash `A` stays visible, `Publish` stays locked, **Check receipt** stays usable, and no new transaction is sent.
+- **TDD regressions (`apps/web/test/publication.test.ts`, 16 tests)**: added a real `viem` `createPublicClient` + `custom` transport `waitForTransactionReceipt` regression test (`refuses wait:true onReplaced when submission.nonce is unverified and eth_getTransactionByHash(A) omits hash`) plus callback evidence-source assertions (`enforces evidence-source rules for wait:true onReplaced across unverified and verified submission.nonce`). Before patching `classifyReplacedFromEvent`, the missing-hash fixture failed with `Status: "replaced"` instead of `"unavailable"`; after the fix, the missing-hash fixture returns `"unavailable"` (including a read-only `wait: false` re-check with zero write calls) and its single-change positive control (`hash: txHash`) returns `{ status: "replaced", originalHash: A, replacementHash: B }`.
+
+| Local command (Windows, 2026-11-13, working tree on `f769712`) | Observed result |
+| --- | --- |
+| `pnpm exec vitest run apps/web/test/publication.test.ts` | Exited 0 (`16 passed (16)`, after observed pre-fix failure `2 failed \| 14 passed`). |
+| `pnpm typecheck` | Exited 0 (`tsc --noEmit` across workspace). |
+| `pnpm lint` | Exited 0 (`eslint .`). |
+| `pnpm test` | Exited 0 (`5 passed (5)` files, `123 passed (123)` unit tests). |
+| `pnpm build` | Exited 0 (Next.js `16.4.6` production build for `/`, `/_not-found`, `/lookup`). |
+| `pnpm test:integration` | Exited 0 (`1 passed (1)` file, `13 passed (13)` Anvil integration tests). |
+| `pnpm test:browser` | Exited 0 (`publishes an analyzer snapshot and verifies the body against its retrieved commitment`: `1 passed \| 12 skipped (13)`). |
+| `git diff HEAD --check` | Exited 0. |
+
+- **Commit/CI note**: `f769712` committed the prior working tree edits from `5bfcadb`; the current callback fix and tests in `apps/web/lib/receipt.ts`, `apps/web/test/publication.test.ts`, and `docs/PROGRESS.md` remain uncommitted in the working tree on `codex/m5-local-flow` for maintainer review. Hosted CI (`43347475910`) reflects only older commit `24c1ac1`, and interactive Core wallet testing remains manual.

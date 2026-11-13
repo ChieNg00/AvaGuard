@@ -264,6 +264,11 @@ function classifyReplacedFromEvent(
       message:
         "Receipt is missing a valid transaction hash. Use Check receipt to verify the submitted transaction.",
     };
+  const unavailable = {
+    status: "unavailable" as const,
+    message:
+      "Replacement receipt details did not match the submitted transaction. Use Check receipt to verify the submitted transaction.",
+  };
   const tx = replacedInfo.transaction;
   const orig = replacedInfo.replacedTransaction;
   const evReceipt = replacedInfo.transactionReceipt;
@@ -276,38 +281,56 @@ function classifyReplacedFromEvent(
     tx &&
     typeof tx.from === "string" &&
     tx.from.toLowerCase() === submission.attester.toLowerCase();
-  const nonceMatches =
-    tx &&
-    isValidNonce(tx.nonce) &&
-    (submission.nonce === undefined || tx.nonce === submission.nonce);
-  const origHashMatches =
-    !orig?.hash ||
-    (isValidTxHash(orig.hash) &&
-      orig.hash.toLowerCase() === submission.hash.toLowerCase());
-  const origFromMatches =
-    !orig?.from || orig.from.toLowerCase() === submission.attester.toLowerCase();
-  const origNonceMatches =
-    orig?.nonce === undefined ||
-    (isValidNonce(orig.nonce) && orig.nonce === tx?.nonce);
   const evReceiptMatches =
-    !evReceipt?.transactionHash ||
-    evReceipt.transactionHash.toLowerCase() ===
-      receipt.transactionHash.toLowerCase();
+    evReceipt === undefined ||
+    (typeof evReceipt === "object" &&
+      evReceipt !== null &&
+      (evReceipt.transactionHash === undefined ||
+        (isValidTxHash(evReceipt.transactionHash) &&
+          evReceipt.transactionHash.toLowerCase() ===
+            receipt.transactionHash.toLowerCase())) &&
+      (evReceipt.status === undefined || evReceipt.status === receipt.status));
 
   if (
     !hashMatches ||
     !fromMatches ||
-    !nonceMatches ||
-    !origHashMatches ||
-    !origFromMatches ||
-    !origNonceMatches ||
+    !tx ||
+    !isValidNonce(tx.nonce) ||
     !evReceiptMatches
   )
-    return {
-      status: "unavailable",
-      message:
-        "Replacement receipt details did not match the submitted transaction. Use Check receipt to verify the submitted transaction.",
-    };
+    return unavailable;
+
+  if (submission.nonce === undefined) {
+    const origMeta = validateSubmittedTransaction(
+      orig,
+      submission.hash,
+      submission.attester,
+    );
+    if (!origMeta || origMeta.nonce !== tx.nonce) return unavailable;
+  } else {
+    if (!isValidNonce(submission.nonce) || tx.nonce !== submission.nonce)
+      return unavailable;
+    if (orig !== undefined) {
+      if (typeof orig !== "object" || orig === null) return unavailable;
+      if (
+        orig.hash !== undefined &&
+        (!isValidTxHash(orig.hash) ||
+          orig.hash.toLowerCase() !== submission.hash.toLowerCase())
+      )
+        return unavailable;
+      if (
+        orig.from !== undefined &&
+        (typeof orig.from !== "string" ||
+          orig.from.toLowerCase() !== submission.attester.toLowerCase())
+      )
+        return unavailable;
+      if (
+        orig.nonce !== undefined &&
+        (!isValidNonce(orig.nonce) || orig.nonce !== submission.nonce)
+      )
+        return unavailable;
+    }
+  }
 
   return {
     status: "replaced",
