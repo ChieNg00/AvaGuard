@@ -4,6 +4,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  encodeFunctionData,
   getAddress,
   keccak256,
   type Address,
@@ -13,7 +14,11 @@ import { avalancheFuji } from "viem/chains";
 import type { ReportBody } from "@avaguard/analyzer";
 import { registryAbi as abi } from "../lib/registry-abi";
 import { publication } from "../lib/publication";
-import { verifySubmissionReceipt, type Submission } from "../lib/receipt";
+import {
+  validateSubmittedTransaction,
+  verifySubmissionReceipt,
+  type Submission,
+} from "../lib/receipt";
 import { walletContext } from "./actions";
 
 const INITIAL_MESSAGE =
@@ -137,6 +142,7 @@ export function Publish({ body }: { body: ReportBody }) {
       const reader = createPublicClient({
         transport: custom(provider, { retryCount: 0 }),
       });
+      const checkChainRevision = ref.chainRevision;
       const outcome = await verifySubmissionReceipt({
         reader,
         checkContext: walletContext,
@@ -144,18 +150,43 @@ export function Publish({ body }: { body: ReportBody }) {
         wait,
         signal: controller.signal,
         getChainRevision: () => ref.chainRevision,
+        onVerifiedTransaction: (meta) => {
+          if (
+            ref.reportRevision !== reportToken ||
+            ref.receiptCheckId !== checkId ||
+            ref.chainRevision !== checkChainRevision
+          )
+            return;
+          const current = ref.submission;
+          if (
+            !current ||
+            current.hash.toLowerCase() !== target.hash.toLowerCase()
+          )
+            return;
+          const updated: Submission = {
+            ...current,
+            nonce: meta.nonce,
+            submittedBlock: meta.submittedBlock ?? current.submittedBlock,
+          };
+          ref.submission = updated;
+          setSubmission(updated);
+        },
       });
       if (ref.reportRevision !== reportToken || ref.receiptCheckId !== checkId)
         return;
+      const currentTarget =
+        ref.submission?.hash.toLowerCase() === target.hash.toLowerCase()
+          ? ref.submission
+          : target;
       if (outcome.status === "confirmed") {
-        const confirmed: Submission = { ...target, status: "confirmed" };
+        const confirmed: Submission = { ...currentTarget, status: "confirmed" };
         ref.submission = confirmed;
         setSubmission(confirmed);
         setMessage("Confirmed publication: " + outcome.hash);
         return;
       }
       if (outcome.status === "reverted") {
-        const reverted: Submission = { ...target, status: "reverted" };
+        const reverted: Submission = { ...currentTarget, status: "reverted" };
         ref.submission = reverted;
         setSubmission(reverted);
         setMessage(
@@ -166,7 +197,10 @@ export function Publish({ body }: { body: ReportBody }) {
         return;
       }
       if (outcome.status === "unverified") {
-        const unverified: Submission = { ...target, status: "unverified" };
+        const unverified: Submission = {
+          ...currentTarget,
+          status: "unverified",
+        };
         ref.submission = unverified;
         setSubmission(unverified);
         setMessage(
@@ -177,7 +211,7 @@ export function Publish({ body }: { body: ReportBody }) {
       }
       if (outcome.status === "replaced") {
         const replaced: Submission = {
-          ...target,
+          ...currentTarget,
           status: "replaced",
           replacementHash: outcome.replacementHash,
         };
@@ -291,12 +325,21 @@ export function Publish({ body }: { body: ReportBody }) {
         (await wallet.getChainId()) !== 43113
       )
         throw new Error("Wallet account or network changed.");
+      const submittedBlockBefore = await reader
+        .getBlockNumber()
+        .catch(() => undefined);
       ensurePreSignUnchanged();
       if (!write) {
         setReady(account);
         setMessage("Authorized local attester: " + account);
         return;
       }
+      const txInput = encodeFunctionData({
+        abi,
+        functionName: "publish",
+        args,
+      });
+      const chainAtSubmit = ref.chainRevision;
       stage = "Wallet rejected or failed to submit the transaction";
       const hash = await wallet.writeContract({
         account,
@@ -311,6 +354,9 @@ export function Publish({ body }: { body: ReportBody }) {
         registry: address,
         registryCodehash: ctx.data.codehash,
         attester: account,
+        submittedBlock: submittedBlockBefore,
+        input: txInput,
+        value: 0n,
         target: args[0].target,
         reportHash: args[0].reportHash,
         blockNumber: body.blockNumber,
@@ -320,7 +366,27 @@ export function Publish({ body }: { body: ReportBody }) {
       ref.submission = next;
       setSubmission(next);
       setMessage("Pending receipt: " + hash);
-      await readReceiptFor(next, { wait: true, reportToken });
+      let activeSubmission = next;
+      if (ref.chainRevision === chainAtSubmit) {
+        const submittedTx = await reader
+          .getTransaction({ hash })
+          .catch(() => undefined);
+        if (ref.reportRevision !== reportToken) return;
+        const verified =
+          ref.chainRevision === chainAtSubmit && ref.submission === next
+            ? validateSubmittedTransaction(submittedTx, hash, account)
+            : null;
+        if (verified) {
+          activeSubmission = {
+            ...next,
+            nonce: verified.nonce,
+            submittedBlock: verified.submittedBlock ?? next.submittedBlock,
+          };
+          ref.submission = activeSubmission;
+          setSubmission(activeSubmission);
+        }
+      }
+      await readReceiptFor(activeSubmission, { wait: true, reportToken });
     } catch (e) {
       if (ref.reportRevision === reportToken)
         setMessage(

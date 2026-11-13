@@ -91,6 +91,7 @@ async function installProvider(targetPage, initialAccount) {
     window.walletState = {
       mode: "wrong",
       receiptMode: "ok",
+      txLookupMode: "ok",
       activeAccount: account,
       sendCount: 0,
       sendPending: false,
@@ -190,9 +191,23 @@ async function installProvider(targetPage, initialAccount) {
           s.lastReplacementHash = null;
           return realHash;
         }
-        if (call.method === "eth_getTransactionByHash") {
-          const pending = replacedMap.get(String(call.params[0]).toLowerCase());
-          if (pending) return pending;
+        if (
+          call.method === "eth_getTransactionByHash" ||
+          call.method === "eth_getTransactionBySenderAndNonce"
+        ) {
+          if (call.method === "eth_getTransactionByHash") {
+            const pending = replacedMap.get(String(call.params[0]).toLowerCase());
+            if (pending) return pending;
+          }
+          const tx = await window.testRpc(call);
+          const matchesLast =
+            tx &&
+            s.lastTxHash &&
+            String(tx.hash).toLowerCase() === s.lastTxHash.toLowerCase();
+          if (s.txLookupMode === "null" && matchesLast) return null;
+          if (s.receiptMode === "null" && matchesLast)
+            return { ...tx, blockNumber: null, blockHash: null, transactionIndex: null };
+          return tx;
         }
         if (call.method === "eth_getTransactionReceipt") {
           if (s.holdReceipt) {
@@ -213,6 +228,17 @@ async function installProvider(targetPage, initialAccount) {
               code: -32000,
             });
           if (s.receiptMode === "null") return null;
+          if (s.receiptMode === "missing-hash")
+            return { status: "0x1", logs: [] };
+          if (s.receiptMode === "mismatched-hash")
+            return {
+              status: "0x1",
+              transactionHash: "0x" + "e".repeat(64),
+              blockHash: "0x" + "1".repeat(64),
+              blockNumber: "0x1",
+              transactionIndex: "0x0",
+              logs: [],
+            };
         }
         const result = await window.testRpc(call);
         if (s.mode === "mismatch" && call.method === "eth_getBlockByNumber")
@@ -642,6 +668,54 @@ try {
     1,
   );
 
+  // Receipt missing transactionHash must stay unavailable (not replaced), keeping original hash and Check receipt.
+  await recoveryPage.evaluate(() => {
+    window.walletState.receiptMode = "missing-hash";
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.getByText(/missing a valid transaction hash/).waitFor();
+  assert.equal(await recoveryPage.getByText(/Transaction replaced/).count(), 0);
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  assert.equal(
+    await recoveryPage.getByText(/Publication reverted:/).count(),
+    0,
+  );
+  await hashCode.waitFor();
+  assert.equal(await hashCode.innerText(), txHash);
+  assert(await publishBtn.isDisabled());
+  assert(!(await checkReceiptBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Contradictory receipt with mismatched transactionHash C must stay retryable and never fake replacement.
+  await recoveryPage.evaluate(() => {
+    window.walletState.receiptMode = "mismatched-hash";
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.getByText(/did not match/).waitFor();
+  assert.equal(await recoveryPage.getByText(/Transaction replaced/).count(), 0);
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  assert.equal(
+    await recoveryPage.getByText(/Publication reverted:/).count(),
+    0,
+  );
+  await hashCode.waitFor();
+  assert.equal(await hashCode.innerText(), txHash);
+  assert(await publishBtn.isDisabled());
+  assert(!(await checkReceiptBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
   // Restore local Anvil network (keeping changedAccount active!) and recover with original attester.
   await recoveryPage.evaluate(() => {
     window.walletState.mode = "ok";
@@ -805,8 +879,202 @@ try {
   );
   assert(await publishBtn.isDisabled());
 
+  // Post-timeout replacement: initial wait times out, replacement B is mined on Anvil, then Check receipt detects B.
+  await anvilRpc("evm_mine", []);
+  const postTimeoutBlock = parseInt(
+    await anvilRpc("eth_blockNumber", []),
+    16,
+  );
+  await recoveryPage.evaluate((origAcc) => {
+    window.walletState.activeAccount = origAcc;
+    window.walletState.mode = "ok";
+    window.walletState.receiptMode = "ok";
+    window.walletState.sendCount = 0;
+  }, attester);
+  await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
+  await recoveryPage.getByText("Block " + postTimeoutBlock).waitFor();
+  await check(recoveryPage, "ok", /Authorized local attester/);
+  await anvilRpc("evm_setAutomine", [false]);
+  await recoveryPage.evaluate(() => {
+    const origSetTimeout = window.setTimeout.bind(window);
+    window.__origSetTimeout = origSetTimeout;
+    window.setTimeout = (fn, delay, ...args) =>
+      origSetTimeout(fn, delay === 60000 ? 150 : delay, ...args);
+  });
+  await publishBtn.click();
+  await recoveryPage.getByText(/Receipt timed out/).waitFor();
+  await recoveryPage.evaluate(() => {
+    if (window.__origSetTimeout) {
+      window.setTimeout = window.__origSetTimeout;
+      delete window.__origSetTimeout;
+    }
+  });
+  const postTimeoutOrigHash = await recoveryPage.evaluate(
+    () => window.walletState.lastTxHash,
+  );
+  assert.match(postTimeoutOrigHash, /^0x[0-9a-f]{64}$/);
+  await recoveryPage
+    .locator("article code", { hasText: postTimeoutOrigHash })
+    .waitFor();
+  assert(await publishBtn.isDisabled());
+  assert(!(await checkReceiptBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+  const origPendingTx = await anvilRpc("eth_getTransactionByHash", [
+    postTimeoutOrigHash,
+  ]);
+  assert(origPendingTx);
+  await anvilRpc("anvil_dropTransaction", [postTimeoutOrigHash]);
+  const repPostTimeoutHash = await anvilRpc("eth_sendTransaction", [
+    {
+      from: attester,
+      to: attester,
+      value: "0x0",
+      nonce: origPendingTx.nonce,
+      gas: "0x5208",
+    },
+  ]);
+  await anvilRpc("evm_mine", []);
+  await anvilRpc("evm_setAutomine", [true]);
+  assert.equal(
+    await anvilRpc("eth_getTransactionReceipt", [postTimeoutOrigHash]),
+    null,
+  );
+  assert(await anvilRpc("eth_getTransactionReceipt", [repPostTimeoutHash]));
+  await checkReceiptBtn.click();
+  await recoveryPage.getByText(/Transaction replaced/).waitFor();
+  await recoveryPage
+    .locator("article code", { hasText: postTimeoutOrigHash })
+    .waitFor();
+  await recoveryPage
+    .locator("article code", { hasText: repPostTimeoutHash })
+    .waitFor();
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  assert.equal(
+    await recoveryPage.getByText(/Publication reverted:/).count(),
+    0,
+  );
+  assert(await publishBtn.isDisabled());
+  assert.equal(await checkReceiptBtn.count(), 0);
+  assert(!(await checkWalletBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Competing nonce tx during wallet dialog: app must not blame competing tx B on A, then tracks and confirms A.
+  await anvilRpc("evm_mine", []);
+  const competingBlock = parseInt(await anvilRpc("eth_blockNumber", []), 16);
+  await recoveryPage.evaluate((origAcc) => {
+    window.walletState.activeAccount = origAcc;
+    window.walletState.mode = "ok";
+    window.walletState.receiptMode = "ok";
+    window.walletState.txLookupMode = "ok";
+    window.walletState.sendCount = 0;
+  }, attester);
+  await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
+  await recoveryPage.getByText("Block " + competingBlock).waitFor();
+  await check(recoveryPage, "ok", /Authorized local attester/);
+  await recoveryPage.evaluate(() => {
+    window.walletState.holdSend = true;
+    window.walletState.receiptMode = "ok";
+    window.walletState.txLookupMode = "null";
+    window.walletState.sendCount = 0;
+  });
+  await publishBtn.click();
+  await recoveryPage.waitForFunction(
+    () => window.walletState.sendPending === true,
+  );
+  const usedNonceHex = await anvilRpc("eth_getTransactionCount", [
+    attester,
+    "latest",
+  ]);
+  const competingHashB = await anvilRpc("eth_sendTransaction", [
+    {
+      from: attester,
+      to: attester,
+      value: "0x0",
+      nonce: usedNonceHex,
+      gas: "0x5208",
+    },
+  ]);
+  assert(await anvilRpc("eth_getTransactionReceipt", [competingHashB]));
+  await anvilRpc("evm_setAutomine", [false]);
+  await recoveryPage.evaluate(() => {
+    const origSetTimeout = window.setTimeout.bind(window);
+    window.__origSetTimeout = origSetTimeout;
+    window.setTimeout = (fn, delay, ...args) =>
+      origSetTimeout(fn, delay === 60000 ? 150 : delay, ...args);
+    window.releaseSend();
+  });
+  await recoveryPage.getByText(/Receipt timed out/).waitFor();
+  await recoveryPage.evaluate(() => {
+    if (window.__origSetTimeout) {
+      window.setTimeout = window.__origSetTimeout;
+      delete window.__origSetTimeout;
+    }
+  });
+  const competingOrigHash = await recoveryPage.evaluate(
+    () => window.walletState.lastTxHash,
+  );
+  assert.match(competingOrigHash, /^0x[0-9a-f]{64}$/);
+  assert.notEqual(
+    competingOrigHash.toLowerCase(),
+    competingHashB.toLowerCase(),
+  );
+  const competingHashCode = recoveryPage.locator("article code", {
+    hasText: competingOrigHash,
+  });
+  await competingHashCode.waitFor();
+  await checkReceiptBtn.click();
+  await recoveryPage
+    .getByText(/Original transaction details are not available yet/)
+    .waitFor();
+  assert.equal(await recoveryPage.getByText(/Transaction replaced/).count(), 0);
+  await competingHashCode.waitFor();
+  assert(await publishBtn.isDisabled());
+  assert(!(await checkReceiptBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Once the node reveals exact A (with the higher nonce) pending, Check receipt tracks A without blaming B.
+  await recoveryPage.evaluate(() => {
+    window.walletState.txLookupMode = "ok";
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.getByText(/still pending/).waitFor();
+  assert.equal(await recoveryPage.getByText(/Transaction replaced/).count(), 0);
+  await competingHashCode.waitFor();
+  assert(await publishBtn.isDisabled());
+  assert(!(await checkReceiptBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Mining A confirms it on Check receipt without resubmitting.
+  await anvilRpc("evm_mine", []);
+  await anvilRpc("evm_setAutomine", [true]);
+  await checkReceiptBtn.click();
+  await recoveryPage
+    .getByText("Confirmed publication: " + competingOrigHash)
+    .waitFor();
+  await competingHashCode.waitFor();
+  assert(await publishBtn.isDisabled());
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
   console.log(
-    "Browser passed: score 35, export, network/snapshot/rejection guards, confirmed receipt, receipt recovery, wallet events, mid-read chain round-trip, reverted/unverified/replaced receipts, clean lookup, import races, replay, current state and pruned history.",
+    "Browser passed: score 35, export, network/snapshot/rejection guards, confirmed receipt, receipt recovery, wallet events, mid-read chain round-trip, reverted/unverified/replaced/post-timeout-replaced/missing-hash/mismatched-hash/competing-nonce receipts, clean lookup, import races, replay, current state and pruned history.",
   );
 } catch (error) {
   console.error((await activePage?.locator("body").innerText())?.slice(-2500));

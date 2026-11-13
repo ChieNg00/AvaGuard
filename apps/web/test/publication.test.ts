@@ -16,6 +16,7 @@ import { agrees, differences, publication } from "../lib/publication";
 import { registryAbi } from "../lib/registry-abi";
 import {
   classifyReceipt,
+  validateSubmittedTransaction,
   verifySubmissionReceipt,
   type ContextReader,
   type ReceiptLike,
@@ -246,6 +247,17 @@ it("handles pending, timeout and transport errors without losing submission stat
 
   const pending = await verifySubmissionReceipt({
     reader: makeReader({
+      async getTransaction({ hash }: { hash?: Hex; sender?: Address; nonce?: number }) {
+        if (hash?.toLowerCase() === txHash.toLowerCase()) {
+          return {
+            hash: txHash,
+            from: attester,
+            nonce: 7,
+            blockNumber: null,
+          };
+        }
+        throw new TransactionReceiptNotFoundError({ hash: txHash });
+      },
       async getTransactionReceipt({ hash }) {
         throw new TransactionReceiptNotFoundError({ hash });
       },
@@ -255,6 +267,18 @@ it("handles pending, timeout and transport errors without losing submission stat
     wait: false,
   });
   expect(pending.status).toBe("pending");
+
+  const unconfirmedMissingTx = await verifySubmissionReceipt({
+    reader: makeReader({
+      async getTransactionReceipt({ hash }) {
+        throw new TransactionReceiptNotFoundError({ hash });
+      },
+    }),
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+  expect(unconfirmedMissingTx.status).toBe("unavailable");
 
   vi.useFakeTimers();
   const waitPromise = verifySubmissionReceipt({
@@ -459,13 +483,11 @@ it("does not classify a replacement transaction receipt as confirming or reverti
       },
       submission,
     ),
-  ).toEqual({
-    status: "replaced",
-    originalHash: txHash,
-    replacementHash,
+  ).toMatchObject({
+    status: "unavailable",
   });
 
-  const replacedSuccess = await verifySubmissionReceipt({
+  const withoutOnReplaced = await verifySubmissionReceipt({
     reader: makeReader({
       async waitForTransactionReceipt() {
         return {
@@ -479,11 +501,44 @@ it("does not classify a replacement transaction receipt as confirming or reverti
     submission,
     wait: true,
   });
-  expect(replacedSuccess).toEqual({
-    status: "replaced",
-    originalHash: txHash,
-    replacementHash,
-  });
+  expect(withoutOnReplaced.status).toBe("unavailable");
+
+  for (const status of ["reverted", "success"] as const) {
+    const replacementReceipt: ReceiptLike = {
+      status,
+      transactionHash: replacementHash,
+      logs: status === "success" ? [makePublishedLog()] : [],
+    };
+    const replacedOutcome = await verifySubmissionReceipt({
+      reader: makeReader({
+        async waitForTransactionReceipt({ onReplaced }) {
+          onReplaced?.({
+            reason: "replaced",
+            replacedTransaction: {
+              hash: txHash,
+              from: attester,
+              nonce: 7,
+            },
+            transaction: {
+              hash: replacementHash,
+              from: attester,
+              nonce: 7,
+            },
+            transactionReceipt: replacementReceipt,
+          });
+          return replacementReceipt;
+        },
+      }),
+      checkContext: okContext,
+      submission: { ...submission, nonce: 7 },
+      wait: true,
+    });
+    expect(replacedOutcome).toEqual({
+      status: "replaced",
+      originalHash: txHash,
+      replacementHash,
+    });
+  }
 });
 
 it("discards a receipt read during an A -> B -> A chainChanged round-trip and recovers on A", async () => {
@@ -538,4 +593,704 @@ it("discards a receipt read during an A -> B -> A chainChanged round-trip and re
     getChainRevision: () => chainRev,
   });
   expect(retryOutcome).toEqual({ status: "confirmed", hash: txHash });
+});
+
+it("detects a replacement transaction mined after the initial wait timed out", async () => {
+  const replacementHash = ("0x" + "c".repeat(64)) as Hex;
+  const submission = {
+    ...makeSubmission(),
+    nonce: 7,
+    submittedBlock: 10n,
+  } as Submission;
+
+  vi.useFakeTimers();
+  const waitPromise = verifySubmissionReceipt({
+    reader: makeReader({
+      waitForTransactionReceipt({ hash, timeout = 60000 }) {
+        return new Promise((_, reject) => {
+          setTimeout(
+            () => reject(new WaitForTransactionReceiptTimeoutError({ hash })),
+            timeout,
+          );
+        });
+      },
+    }),
+    checkContext: okContext,
+    submission,
+    wait: true,
+    timeoutMs: 60000,
+  });
+  await vi.advanceTimersByTimeAsync(60000);
+  expect((await waitPromise).status).toBe("timeout");
+  vi.useRealTimers();
+
+  // After timeout, B is mined with the same attester + nonce while A is dropped/unmined.
+  const recheck = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getBlock({ blockNumber, includeTransactions }: { blockNumber: bigint; includeTransactions?: boolean }) {
+          if (includeTransactions && blockNumber === 12n) {
+            return {
+              hash: submission.blockHash,
+              transactions: [
+                {
+                  from: attester,
+                  nonce: 7,
+                  hash: replacementHash,
+                },
+              ],
+            };
+          }
+          return {
+            hash: submission.blockHash,
+            transactions: [],
+          };
+        },
+        async getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === replacementHash.toLowerCase()) {
+            return {
+              status: "reverted",
+              transactionHash: replacementHash,
+              logs: [],
+            };
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+      }),
+      async getBlockNumber() {
+        return 12n;
+      },
+      async getTransaction({ hash }: { hash?: Hex; sender?: Address; nonce?: number }) {
+        throw new TransactionReceiptNotFoundError({ hash: hash ?? txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+
+  expect(recheck).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash,
+  });
+});
+
+it("treats receipts missing or malformed transactionHash as unavailable rather than replaced", async () => {
+  const submission = makeSubmission();
+
+  const missing = classifyReceipt(
+    {
+      status: "success",
+      transactionHash: undefined as unknown as Hex,
+      logs: [makePublishedLog()],
+    },
+    submission,
+  );
+  expect(missing.status).toBe("unavailable");
+  expect(missing.status).not.toBe("replaced");
+
+  const malformed = classifyReceipt(
+    {
+      status: "reverted",
+      transactionHash: "0x1234" as Hex,
+      logs: [],
+    },
+    submission,
+  );
+  expect(malformed.status).toBe("unavailable");
+
+  const recovered = await verifySubmissionReceipt({
+    reader: makeReader({
+      async getTransactionReceipt() {
+        return {
+          status: "success",
+          transactionHash: "" as Hex,
+          logs: [makePublishedLog()],
+        };
+      },
+    }),
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+  expect(recovered.status).toBe("unavailable");
+});
+
+it("refuses speculative nonce 7 when A was sent at nonce 8 and tracks A once verified", async () => {
+  const hashB = ("0x" + "b".repeat(64)) as Hex;
+  const hashC = ("0x" + "c".repeat(64)) as Hex;
+  const unverifiedSubmission = makeSubmission(); // nonce is undefined initially
+  let passedReplacement: unknown = "unset";
+
+  // During initial wait without verified nonce, receipt B without onReplaced proof must not become replaced.
+  const waitWithoutProof = await verifySubmissionReceipt({
+    reader: makeReader({
+      async waitForTransactionReceipt(args) {
+        passedReplacement = args.replacement;
+        return {
+          status: "success",
+          transactionHash: hashB,
+          logs: [makePublishedLog()],
+        };
+      },
+    }),
+    checkContext: okContext,
+    submission: unverifiedSubmission,
+    wait: true,
+  });
+  expect(passedReplacement).toBeUndefined();
+  expect(waitWithoutProof.status).toBe("unavailable");
+
+  // During Check receipt before node knows A, mined B at nonce 7 must not be reported as replacing A.
+  const missingOrig = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === hashB.toLowerCase()) {
+            return {
+              status: "success",
+              transactionHash: hashB,
+              logs: [makePublishedLog()],
+            };
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+        async getBlock({ blockNumber, includeTransactions }) {
+          if (includeTransactions && blockNumber === 11n) {
+            return {
+              hash: unverifiedSubmission.blockHash,
+              transactions: [{ from: attester, nonce: 7, hash: hashB }],
+            };
+          }
+          return { hash: unverifiedSubmission.blockHash, transactions: [] };
+        },
+      }),
+      async getBlockNumber() {
+        return 11n;
+      },
+      async getTransaction({ hash }: { hash?: Hex; sender?: Address; nonce?: number }) {
+        throw new TransactionReceiptNotFoundError({ hash: hash ?? txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission: unverifiedSubmission,
+    wait: false,
+  });
+  expect(missingOrig.status).toBe("unavailable");
+
+  // Mismatched transaction identity from getTransaction({ hash: A }) must never donate nonce 7 to A.
+  const corruptOrig = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === hashB.toLowerCase()) {
+            return { status: "reverted", transactionHash: hashB, logs: [] };
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+        async getBlock({ blockNumber, includeTransactions }) {
+          if (includeTransactions && blockNumber === 11n) {
+            return {
+              hash: unverifiedSubmission.blockHash,
+              transactions: [{ from: attester, nonce: 7, hash: hashB }],
+            };
+          }
+          return { hash: unverifiedSubmission.blockHash, transactions: [] };
+        },
+      }),
+      async getBlockNumber() {
+        return 11n;
+      },
+      async getTransaction(args: { hash?: Hex; sender?: Address; nonce?: number }) {
+        if ("hash" in args && args.hash) {
+          return {
+            hash: hashB,
+            from: otherAddress,
+            nonce: 7,
+            blockNumber: null,
+          };
+        }
+        throw new TransactionReceiptNotFoundError({ hash: txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission: unverifiedSubmission,
+    wait: false,
+  });
+  expect(corruptOrig.status).toBe("unavailable");
+
+  // Recovery: node returns exact A (case-insensitive hash/from) with true nonce 8 pending.
+  const trackedAt8 = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === hashB.toLowerCase()) {
+            return { status: "success", transactionHash: hashB, logs: [] };
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+        async getBlock({ blockNumber, includeTransactions }) {
+          if (includeTransactions && blockNumber === 11n) {
+            return {
+              hash: unverifiedSubmission.blockHash,
+              transactions: [{ from: attester, nonce: 7, hash: hashB }],
+            };
+          }
+          return { hash: unverifiedSubmission.blockHash, transactions: [] };
+        },
+      }),
+      async getBlockNumber() {
+        return 11n;
+      },
+      async getTransaction(args: { hash?: Hex; sender?: Address; nonce?: number }) {
+        if ("hash" in args && args.hash) {
+          return {
+            hash: ("0x" + txHash.slice(2).toUpperCase()) as Hex,
+            from: attester.toLowerCase() as Address,
+            nonce: 8,
+            blockNumber: null,
+          };
+        }
+        throw new TransactionReceiptNotFoundError({ hash: txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission: unverifiedSubmission,
+    wait: false,
+  });
+  expect(trackedAt8).toMatchObject({
+    status: "pending",
+    message: expect.stringMatching(/still pending/),
+  });
+
+  // Once tracked at verified nonce 8, a real replacement C at nonce 8 is detected accurately.
+  const trackedSubmission: Submission = {
+    ...unverifiedSubmission,
+    nonce: 8,
+    submittedBlock: 10n,
+  };
+  const replacedAt8 = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === hashC.toLowerCase()) {
+            return { status: "reverted", transactionHash: hashC, logs: [] };
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+        async getBlock({ blockNumber, includeTransactions }) {
+          if (includeTransactions && blockNumber === 12n) {
+            return {
+              hash: trackedSubmission.blockHash,
+              transactions: [
+                { from: attester, nonce: 7, hash: hashB },
+                { from: attester, nonce: 8, hash: hashC },
+              ],
+            };
+          }
+          return { hash: trackedSubmission.blockHash, transactions: [] };
+        },
+      }),
+      async getBlockNumber() {
+        return 12n;
+      },
+      async getTransaction({ hash }: { hash?: Hex; sender?: Address; nonce?: number }) {
+        throw new TransactionReceiptNotFoundError({ hash: hash ?? txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission: trackedSubmission,
+    wait: false,
+  });
+  expect(replacedAt8).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash: hashC,
+  });
+});
+
+it("binds direct receipt reads to the requested hash for original A and candidate B", async () => {
+  const hashB = ("0x" + "b".repeat(64)) as Hex;
+  const hashC = ("0x" + "c".repeat(64)) as Hex;
+  const submission: Submission = {
+    ...makeSubmission(),
+    nonce: 7,
+    submittedBlock: 10n,
+  };
+
+  // 1. Ask for receipt of A, RPC returns receipt of unrelated C -> unavailable, never C as replacement.
+  const askARecvC = await verifySubmissionReceipt({
+    reader: makeReader({
+      async getTransactionReceipt() {
+        return {
+          status: "success",
+          transactionHash: hashC,
+          logs: [makePublishedLog()],
+        };
+      },
+    }),
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+  expect(askARecvC.status).toBe("unavailable");
+
+  // 2a. Find candidate B via sender/nonce, ask receipt for B, RPC returns C -> unavailable.
+  const askBFromSenderNonceRecvC = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === hashB.toLowerCase()) {
+            return {
+              status: "success",
+              transactionHash: hashC,
+              logs: [makePublishedLog()],
+            };
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+      }),
+      async getTransaction(args: { hash?: Hex; sender?: Address; nonce?: number }) {
+        if ("sender" in args) {
+          return {
+            hash: hashB,
+            from: attester,
+            nonce: 7,
+            blockNumber: 11n,
+          };
+        }
+        throw new TransactionReceiptNotFoundError({ hash: txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+  expect(askBFromSenderNonceRecvC.status).toBe("unavailable");
+
+  // 2b. Find candidate B via block scan, ask receipt for B, RPC returns C -> unavailable.
+  const askBFromScanRecvC = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === hashB.toLowerCase()) {
+            return {
+              status: "reverted",
+              transactionHash: hashC,
+              logs: [],
+            };
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+        async getBlock({ blockNumber, includeTransactions }) {
+          if (includeTransactions && blockNumber === 11n) {
+            return {
+              hash: submission.blockHash,
+              transactions: [{ from: attester, nonce: 7, hash: hashB }],
+            };
+          }
+          return { hash: submission.blockHash, transactions: [] };
+        },
+      }),
+      async getBlockNumber() {
+        return 11n;
+      },
+      async getTransaction({ hash }: { hash?: Hex; sender?: Address; nonce?: number }) {
+        throw new TransactionReceiptNotFoundError({ hash: hash ?? txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+  expect(askBFromScanRecvC.status).toBe("unavailable");
+
+  // 3. Find candidate B and get matching receipt B -> replaced with both A and B.
+  const askBRecvB = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === hashB.toLowerCase()) {
+            return {
+              status: "success",
+              transactionHash: hashB,
+              logs: [makePublishedLog()],
+            };
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+      }),
+      async getTransaction(args: { hash?: Hex; sender?: Address; nonce?: number }) {
+        if ("sender" in args) {
+          return {
+            hash: hashB,
+            from: attester,
+            nonce: 7,
+            blockNumber: 11n,
+          };
+        }
+        throw new TransactionReceiptNotFoundError({ hash: txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+  expect(askBRecvB).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash: hashB,
+  });
+});
+
+it("returns retryable unavailable instead of pending when block scan stops before submittedBlock 100", async () => {
+  const hashB = ("0x" + "b".repeat(64)) as Hex;
+  const submission: Submission = {
+    ...makeSubmission(),
+    nonce: 7,
+    submittedBlock: 100n,
+  };
+  const scannedBlocks: bigint[] = [];
+
+  const partial = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+        async getBlock({ blockNumber, includeTransactions }) {
+          if (includeTransactions) {
+            scannedBlocks.push(blockNumber);
+            if (blockNumber === 101n) {
+              return {
+                hash: submission.blockHash,
+                transactions: [{ from: attester, nonce: 7, hash: hashB }],
+              };
+            }
+          }
+          return { hash: submission.blockHash, transactions: [] };
+        },
+      }),
+      async getBlockNumber() {
+        return 240n;
+      },
+      async getTransaction({ hash }: { hash?: Hex; sender?: Address; nonce?: number }) {
+        throw new TransactionReceiptNotFoundError({ hash: hash ?? txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+
+  // Bounded finite scan from 240 down to 112 (does not reach 101 or 100).
+  expect(scannedBlocks.length).toBeGreaterThan(0);
+  expect(scannedBlocks.length).toBeLessThanOrEqual(129);
+  expect(scannedBlocks).not.toContain(101n);
+  expect(partial.status).toBe("unavailable");
+  if ("message" in partial) {
+    expect(partial.message).not.toMatch(/still pending/i);
+    expect(partial.message).toMatch(/do not cover the original submission/i);
+  }
+
+  // Without submittedBlock known, missing receipt/tx must not conclude pending either.
+  const unknownBlockOutcome = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+      }),
+      async getBlockNumber() {
+        return 240n;
+      },
+      async getTransaction({ hash }: { hash?: Hex; sender?: Address; nonce?: number }) {
+        throw new TransactionReceiptNotFoundError({ hash: hash ?? txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission: { ...makeSubmission(), nonce: 7 },
+    wait: false,
+  });
+  expect(unknownBlockOutcome.status).toBe("unavailable");
+
+  // Positive control: when node returns exact A with blockNumber === null, status is still pending.
+  const realPending = await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+      }),
+      async getBlockNumber() {
+        return 240n;
+      },
+      async getTransaction(args: { hash?: Hex; sender?: Address; nonce?: number }) {
+        if ("hash" in args && args.hash?.toLowerCase() === txHash.toLowerCase()) {
+          return {
+            hash: txHash,
+            from: attester,
+            nonce: 7,
+            blockNumber: null,
+          };
+        }
+        throw new TransactionReceiptNotFoundError({ hash: txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission,
+    wait: false,
+  });
+  expect(realPending).toMatchObject({
+    status: "pending",
+    message: expect.stringMatching(/still pending/),
+  });
+});
+
+it("validates transaction identity, rejects corrupt replacement candidates, and discards candidate reads across mid-read chainChanged", async () => {
+  const hashB = ("0x" + "b".repeat(64)) as Hex;
+  expect(
+    validateSubmittedTransaction(
+      {
+        hash: ("0x" + txHash.slice(2).toUpperCase()) as Hex,
+        from: attester.toLowerCase(),
+        nonce: 8,
+        blockNumber: null,
+      },
+      txHash,
+      attester,
+    ),
+  ).toEqual({ nonce: 8, submittedBlock: undefined });
+  expect(
+    validateSubmittedTransaction(
+      { hash: hashB, from: attester, nonce: 7, blockNumber: null },
+      txHash,
+      attester,
+    ),
+  ).toBeNull();
+  expect(
+    validateSubmittedTransaction(
+      { hash: txHash, from: otherAddress, nonce: 7, blockNumber: null },
+      txHash,
+      attester,
+    ),
+  ).toBeNull();
+  expect(
+    validateSubmittedTransaction(
+      { hash: txHash, from: attester, nonce: -1, blockNumber: null },
+      txHash,
+      attester,
+    ),
+  ).toBeNull();
+
+  // onVerifiedTransaction persists true nonce 8 discovered during Check receipt.
+  let observedNonce: number | undefined;
+  await verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getTransactionReceipt({ hash }) {
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+      }),
+      async getTransaction(args: { hash?: Hex; sender?: Address; nonce?: number }) {
+        if ("hash" in args && args.hash?.toLowerCase() === txHash.toLowerCase()) {
+          return {
+            hash: txHash,
+            from: attester,
+            nonce: 8,
+            blockNumber: null,
+          };
+        }
+        throw new TransactionReceiptNotFoundError({ hash: txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission: makeSubmission(),
+    wait: false,
+    onVerifiedTransaction: (meta) => {
+      observedNonce = meta.nonce;
+    },
+  });
+  expect(observedNonce).toBe(8);
+
+  const tracked: Submission = {
+    ...makeSubmission(),
+    nonce: 7,
+    submittedBlock: 10n,
+  };
+
+  // Unmined or mismatched sender/nonce candidates are never marked as replaced.
+  for (const badCandidate of [
+    { hash: hashB, from: attester, nonce: 7, blockNumber: null },
+    { hash: hashB, from: otherAddress, nonce: 7, blockNumber: 11n },
+    { hash: hashB, from: attester, nonce: 8, blockNumber: 11n },
+  ]) {
+    const out = await verifySubmissionReceipt({
+      reader: {
+        ...makeReader({
+          async getTransactionReceipt({ hash }) {
+            if (hash.toLowerCase() === hashB.toLowerCase()) {
+              return { status: "success", transactionHash: hashB, logs: [] };
+            }
+            throw new TransactionReceiptNotFoundError({ hash });
+          },
+        }),
+        async getTransaction(args: { hash?: Hex; sender?: Address; nonce?: number }) {
+          if ("sender" in args) return badCandidate;
+          throw new TransactionReceiptNotFoundError({ hash: txHash });
+        },
+      } as ReceiptReader,
+      checkContext: okContext,
+      submission: tracked,
+      wait: false,
+    });
+    expect(out.status).toBe("unavailable");
+  }
+
+  // Mid-read A -> B -> A chainChanged while reading candidate receipt B discards the candidate receipt.
+  let chainRev = 1;
+  let chainId = 43113;
+  let resolveCandidateReceipt!: (value: ReceiptLike) => void;
+  const midReadCandidate = verifySubmissionReceipt({
+    reader: {
+      ...makeReader({
+        async getChainId() {
+          return chainId;
+        },
+        getTransactionReceipt({ hash }) {
+          if (hash.toLowerCase() === hashB.toLowerCase()) {
+            return new Promise((resolve) => {
+              resolveCandidateReceipt = resolve;
+            });
+          }
+          throw new TransactionReceiptNotFoundError({ hash });
+        },
+      }),
+      async getTransaction(args: { hash?: Hex; sender?: Address; nonce?: number }) {
+        if ("sender" in args) {
+          return { hash: hashB, from: attester, nonce: 7, blockNumber: 11n };
+        }
+        throw new TransactionReceiptNotFoundError({ hash: txHash });
+      },
+    } as ReceiptReader,
+    checkContext: okContext,
+    submission: tracked,
+    wait: false,
+    getChainRevision: () => chainRev,
+  });
+  await vi.waitFor(() => expect(resolveCandidateReceipt).toBeDefined());
+  chainRev = 2;
+  chainId = 1;
+  chainRev = 3;
+  chainId = 43113;
+  resolveCandidateReceipt({
+    status: "success",
+    transactionHash: hashB,
+    logs: [],
+  });
+  expect(await midReadCandidate).toMatchObject({
+    status: "pending",
+    message: expect.stringMatching(/Wallet network changed while reading/),
+  });
 });
