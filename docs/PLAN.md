@@ -1,6 +1,6 @@
 # Implementation plan
 
-Updated 2026-11-06. No application phase below has been executed. A separate sampled historical RPC probe succeeded; see RPC_HISTORY_CHECK.md. Keep capacity realistic for two people; extra hours are contingency, not guaranteed scope.
+M0 through M4 have recorded local verification. M5 implementation and current verification are recorded in PROGRESS.md. A separate sampled historical RPC probe succeeded; see RPC_HISTORY_CHECK.md. Keep capacity realistic for two people; extra hours are contingency, not guaranteed scope.
 
 | Milestone | Outcome | Completion evidence |
 | --- | --- | --- |

@@ -224,3 +224,79 @@ The locked M3 vector retains its synthetic block 32 and fixed block hash. Its ex
 | `pnpm build` | Passed with workspace build access after sandbox prerender hit EPERM. Production routes /, /lookup and /_not-found were generated. |
 
 M4 local checks passed on Windows with Ubuntu WSL. Hosted CI for these working-tree changes, injected-wallet publication and Fuji deployment remain unverified. UI and public-network work belong to later milestones.
+
+## M5 local browser flow — implementation started from e50d2ae
+
+The Scan and Lookup pages now use bounded server reads and the M3 canonical body. Publication uses the injected provider, the compiled M4 ABI, the local registry runtime hash, live permission and the wallet's snapshot hash. A successful receipt must include the matching registry event. The server has no transaction endpoint. Setup and reproduction commands are in [M5_DEMO.md](M5_DEMO.md).
+
+| Local command | Observed result on Windows + Ubuntu WSL, 2026-11-13 |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Passed with a single workspace lockfile. |
+| `pnpm typecheck`, `pnpm lint`, `pnpm build` | All exited 0. The production build completed without a running read RPC. |
+| `pnpm test` | 109 tests passed across five files, including tuple agreement and semantic differences. |
+| `forge fmt --check`, `forge build --build-info`, `forge test -vv` in packages/contracts | All passed. 16 Solidity tests passed. Existing fixture lint warnings remain. |
+| `pnpm test:integration` | 13 Anvil tests passed. The test deployment now polls boundedly for its receipt after an observed pending result. |
+| `pnpm test:browser` after production build and Chromium installation | The filtered browser scenario passed. Empty-code scan, wallet-free MintableToken score 35 and canonical download were observed. Wrong network, conflicting header with the same chain ID and rejected submission were exercised. The app confirmed the local receipt and matching event for transaction `0xae0d5a049fa7ec6fa18fd8f786f86c414b5dc5c7e88c00ef839e43483f5ad1e4`. This hash belongs to the ephemeral test node. |
+| Fresh Chromium context | Empty lookup, latest, history index 0, missing body, malformed JSON, invalid schema, altered valid JSON, matching import, original-block replay, current-state comparison and simulated pruned-state replay passed. |
+| Demo setup syntax | WSL Bash syntax and Foundry keystore options checked. Actual interactive deployer keystore and Core wallet setup remain manual. |
+
+Early Edge runs timed out. Final browser checks used pinned Playwright with its matching Chromium binary and a test-only provider. Hosted Actions and a real wallet extension have not been exercised for this branch. Both existing CI jobs use checkout v7; browser acceptance runs in the existing contracts-and-integration job after Forge artifacts are built.
+
+## M5 PR #6 review fixes — implemented on f3f91d2
+
+- **Receipt recovery (P2)**: extracted pure receipt classification and submission/network-validated receipt checks into `apps/web/lib/receipt.ts`, and updated `apps/web/app/publish.tsx` so submitted hashes remain visible as selectable text and lock `Publish` / `Check wallet` while pending, survive post-hash `accountsChanged` / `chainChanged` events, and recover via a single-flight read-only **Check receipt** action bound to the original registry, codehash, attester, snapshot and `reportHash`. Reverted or unverified receipts are shown explicitly without auto-resubmitting; retrying a reverted receipt requires a deliberate re-check of the wallet.
+- **Lookup import race (P3)**: updated `apps/web/app/inspection.tsx` to track pending file imports and active comparisons separately, display an importing state, disable and guard **Replay original block** and **Scan current state** while a file is loading, supersede older file reads and invalidate outstanding comparisons on new imports, and preserve size, schema, hash and summary checks plus recovery after malformed JSON.
+- **Demo notes and regressions**: added recovery guidance to [M5_DEMO.md](M5_DEMO.md) and expanded `apps/web/test/publication.test.ts` and `apps/web/test/browser.mjs` with deterministic tests for receipt recovery, `on`/`removeListener` wallet events, wrong-network and same-chain-ID snapshot mismatch guards, pre-hash rejections, reverted and event-mismatched receipts, delayed `File.text()` reads, reverse-order file selection, held current-state comparisons, and recovery after malformed JSON.
+
+| Local command (Windows + Ubuntu WSL, 2026-11-13) | Observed result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Passed with lockfile up to date across 3 workspace projects. |
+| `pnpm typecheck` | Exited 0 (`tsc --noEmit` across workspace). |
+| `pnpm lint` | Exited 0 (`eslint .`, zero warnings/errors). |
+| `pnpm test` | 5 test files, 113 unit tests passed (including 6 tests in `apps/web/test/publication.test.ts`). |
+| `forge fmt --check`, `forge build --build-info`, `forge test -vv` (`packages/contracts`) | Passed (3 suites, 16 Solidity tests passed; existing GoldenFixtures lint warnings unchanged). |
+| `pnpm test:integration` | Passed (13 Anvil integration tests passed via WSL). |
+| `pnpm build` | Exited 0 (Next.js 16.4.6 production build for `/` and `/lookup`). |
+| `pnpm test:browser` | Passed (ephemeral Anvil + Chromium suite: `publishes an analyzer snapshot and verifies the body against its retrieved commitment`, 1 passed / 12 filtered-skipped, exercising M5 end-to-end flow, receipt recovery, wallet events, reverted/unverified receipts, and import races). |
+
+- **Hosted CI vs local state**: GitHub Actions run `43294543183` passed on `f3f91d2`, and the first P2/P3 review fixes above were committed in `24c1ac1`, which passed GitHub Actions run `43347475910` (`workspace-checks` and `contracts-and-integration`) on `codex/m5-local-flow`.
+
+## M5 PR #6 receipt hardening follow-ups — working tree on `5bfcadb` (built on `24c1ac1`)
+
+- **Confirmed `5bfcadb` receipt guards & mid-read `A -> B -> A` protection**: compared replacement receipt handling in `apps/web/lib/receipt.ts` and `apps/web/app/publish.tsx`, discarded receipts read across mid-read `A -> B -> A` `chainChanged` round-trips, and preserved post-submission account changes via saved `attester`.
+- **P2 post-timeout replacement lookup & verified nonce rules (no speculative pending nonce)**: removed pre-sign `getTransactionCount({ blockTag: "pending" })` fallback in `apps/web/app/publish.tsx`. Original tx `nonce` (and mined `submittedBlock`) are stored only after `validateSubmittedTransaction` confirms case-insensitive `hash` + `from === attester` and valid non-negative integer `nonce` while the report, submission, and network revision still match. Without a verified nonce, `waitForTransactionReceipt` receives no predicted `replacement` hint, **Check receipt** retries `getTransaction({ hash })`, and `wait: true` only classifies replacement when `viem` supplies consistent `onReplaced` proof (never from a mismatched hash alone).
+- **P2 strict direct receipt hash binding & candidate validation**: every direct `getTransactionReceipt({ hash: H })` (both for original `A` and replacement candidate `B`) goes through `validateReceiptForHash` (`/^0x[0-9a-fA-F]{64}$/`, valid `status`/`logs`, exact case-insensitive match with requested `H`), returning retryable `"unavailable"` instead of fake replacement if missing, malformed, or equal to `C !== H`. Candidates from `getTransaction({ sender, nonce })` must match `attester`, verified `nonce`, valid hash, and `blockNumber !== null`; mid-read `chainChanged` checks guard every lookup step without enforcing `calldata`/`to` equality (supporting both speed-up and cancel replacements).
+- **P3 partial-history vs genuine pending distinction**: kept bounded block scans (`128n` when `submittedBlock` is known, `16n` when unknown). `"Transaction is still pending. Use Check receipt again once confirmed."` is emitted only when node reads show exact `A` unmined (`blockNumber === null`); partial scans (e.g., submitted at block `100`, replacement at `101`, head at `240` scanning `240..112`) or unknown `submittedBlock` return retryable `"unavailable"` (`"Receipt unavailable. The searched blocks do not cover the original submission. Use Check receipt to try again."`) while preserving `A` and **Check receipt**.
+- **Regressions and clean workspace note**: added TDD regressions (observed failing before each fix) in `apps/web/test/publication.test.ts` (14 tests covering `7/8` speculative nonce rejection + nonce-8 recovery, `A->C`/`B->C`/`B->B` hash binding, `onReplaced` proof, corrupt candidates, mid-read `A->B->A` candidate reads, `100/101/240` bounded scan vs `blockNumber === null` positive control, and missing/malformed `transactionHash`) plus Chromium/Anvil E2E tests in `apps/web/test/browser.mjs` (contradictory `mismatched-hash`, `missing-hash`, competing-nonce race, and `evm_setAutomine(false)` post-timeout Anvil replacement). Note: `apps/web/next-env.d.ts` matches `5bfcadb` cleanly.
+
+| Local command (Windows + Ubuntu WSL, 2026-11-13, on final working tree over `5bfcadb`) | Observed result |
+| --- | --- |
+| `pnpm typecheck` | Exited 0 (`tsc --noEmit` across workspace). |
+| `pnpm lint` | Exited 0 (`eslint .`). |
+| `pnpm test` | 5 test files, 121 unit tests passed (14 tests in `apps/web/test/publication.test.ts`). |
+| `pnpm build` | Exited 0 (Next.js 16.4.6 production build for `/` and `/lookup`). |
+| `forge fmt --check`, `forge build --build-info`, `forge test -vv` (`packages/contracts`) | Exited 0 (3 suites, 16 Solidity tests passed; pre-existing GoldenFixtures lint warnings unchanged). |
+| `pnpm test:integration` | Exited 0 (13 Anvil integration tests passed via WSL). |
+| `pnpm test:browser` | Exited 0 (`publishes an analyzer snapshot and verifies the body against its retrieved commitment`: 1 passed / 12 filtered-skipped, exercising full M5 flow, contradictory `mismatched-hash`, `missing-hash`, competing-nonce race, `A -> B -> A` discard/recovery, `viem` replacement, and post-timeout Anvil replacement). |
+| `git diff --check` | Exited 0. |
+
+- **Hosted CI vs local state**: GitHub Actions run `43347475910` (`workspace-checks` and `contracts-and-integration`) passed on the older commit `24c1ac1`; commit `5bfcadb` and `f769712` are only verified locally and have not yet run on hosted CI.
+- **Remaining manual checks**: interactive Core wallet smoke test on local Anvil (see [M5_DEMO.md](M5_DEMO.md)), maintainer review + commit/push on `codex/m5-local-flow` and final PR #6 SHA CI verification before merging, then starting M6.
+
+## M5 PR #6 callback replacement classification fix — working tree on `f769712`
+
+- **P2 `wait: true` `onReplaced` evidence-source hardening**: updated `classifyReplacedFromEvent` in `apps/web/lib/receipt.ts`. When `submission.nonce` is unverified (`undefined`), `replacedTransaction` must pass `validateSubmittedTransaction` (requiring valid case-insensitive `hash === A`, `from === attester`, and non-negative integer `nonce === tx.nonce`); missing `orig.hash` no longer passes `origHashMatches`. When `submission.nonce` is already verified, that verified `attester` + `nonce` validates replacement `tx`, while contradictory `replacedTransaction` or `transactionReceipt` metadata returns retryable `unavailable`. Valid speed-up/cancel replacements (`to`/`input`/`value` differences) remain supported, hash `A` stays visible, `Publish` stays locked, **Check receipt** stays usable, and no new transaction is sent.
+- **TDD regressions (`apps/web/test/publication.test.ts`, 16 tests)**: added a real `viem` `createPublicClient` + `custom` transport `waitForTransactionReceipt` regression test (`refuses wait:true onReplaced when submission.nonce is unverified and eth_getTransactionByHash(A) omits hash`) plus callback evidence-source assertions (`enforces evidence-source rules for wait:true onReplaced across unverified and verified submission.nonce`). Before patching `classifyReplacedFromEvent`, the missing-hash fixture failed with `Status: "replaced"` instead of `"unavailable"`; after the fix, the missing-hash fixture returns `"unavailable"` (including a read-only `wait: false` re-check with zero write calls) and its single-change positive control (`hash: txHash`) returns `{ status: "replaced", originalHash: A, replacementHash: B }`.
+
+| Local command (Windows, 2026-11-13, working tree on `f769712`) | Observed result |
+| --- | --- |
+| `pnpm exec vitest run apps/web/test/publication.test.ts` | Exited 0 (`16 passed (16)`, after observed pre-fix failure `2 failed \| 14 passed`). |
+| `pnpm typecheck` | Exited 0 (`tsc --noEmit` across workspace). |
+| `pnpm lint` | Exited 0 (`eslint .`). |
+| `pnpm test` | Exited 0 (`5 passed (5)` files, `123 passed (123)` unit tests). |
+| `pnpm build` | Exited 0 (Next.js `16.4.6` production build for `/`, `/_not-found`, `/lookup`). |
+| `pnpm test:integration` | Exited 0 (`1 passed (1)` file, `13 passed (13)` Anvil integration tests). |
+| `pnpm test:browser` | Exited 0 (`publishes an analyzer snapshot and verifies the body against its retrieved commitment`: `1 passed \| 12 skipped (13)`). |
+| `git diff HEAD --check` | Exited 0. |
+
+- **Commit/CI note**: `f769712` committed the prior working tree edits from `5bfcadb`; the current callback fix and tests in `apps/web/lib/receipt.ts`, `apps/web/test/publication.test.ts`, and `docs/PROGRESS.md` remain uncommitted in the working tree on `codex/m5-local-flow` for maintainer review. Hosted CI (`43347475910`) reflects only older commit `24c1ac1`, and interactive Core wallet testing remains manual.

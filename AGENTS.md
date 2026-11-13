@@ -4,7 +4,7 @@
 
 Build AvaGuard (working title), an evidence-based ERC-20 risk-signal MVP for Avalanche Fuji. Read docs/DECISIONS.md and docs/SCANNER_SPEC.md for confirmed scope and normative analysis behavior. SnowPass and organizer tutorial prompts are reference material only.
 
-The current workspace contains planning files only. Execute the milestone the user requests. INIT_PROMPT.md covers M0 and M1, not the whole application.
+The workspace contains the analyzer, Foundry registry and M5 local web flow. See docs/M5_DEMO.md for setup and docs/PROGRESS.md for observed checks. Execute the milestone the user requests. INIT_PROMPT.md covers M0 and M1, not the whole application.
 
 ## Working conventions
 

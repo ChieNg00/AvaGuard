@@ -1,7 +1,6 @@
 # AvaGuard ERC20 risk signals on Avalanche
 
-M1 foundation workspace for Team1 Vietnam UniHack 2026. AvaGuard is the working title.
-Status: M2 backend evidence collection verified on 2026-11-12. Full scanner rules, registry, AI integration and deployment are deferred.
+ERC-20 risk-signal workspace for Team1 Vietnam UniHack 2026. The local M5 flow supports scanning, canonical report export, attester publication, lookup and independent replay. See [the local demo](docs/M5_DEMO.md) for startup commands and wallet setup.
 
 ## Confirmed scope
 
@@ -19,7 +18,7 @@ Status: M2 backend evidence collection verified on 2026-11-12. Full scanner rule
 2. Read `docs/THREAT_MODEL.md` and `docs/ACCEPTANCE.md` before implementation.
 3. Open this folder as the working project in Codex or Antigravity.
 4. Review the M1 commands and limits below; M0/M1 have been executed.
-5. Review M2 evidence collection below; request M3 separately when ready.
+5. Follow the local M5 demo above. Earlier milestone entries below describe their original scope.
 
 Codex recognizes AGENTS.md as project guidance. For Antigravity, explicitly ask it to read the file; automatic discovery has not been verified. INIT_PROMPT.md is ordinary portable project text, not a claim about an IDE-specific configuration format.
 
