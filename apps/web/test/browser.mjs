@@ -270,6 +270,8 @@ try {
   await page.getByLabel("Target contract address").fill("0x" + "9".repeat(40));
   await page.getByRole("button", { name: "Scan contract" }).click();
   await page.getByText(/no-bytecode · No score available/).waitFor();
+  await page.locator(".explain-panel").getByText("Template explanation").waitFor();
+  await page.locator(".explain-panel").getByText(/no-bytecode/).waitFor();
   assert.equal(
     await page.getByRole("button", { name: "Publish", exact: true }).count(),
     0,
@@ -277,7 +279,13 @@ try {
   await page.getByLabel("Target contract address").fill(fixture);
   await page.getByRole("button", { name: "Scan contract" }).click();
   await page.getByText("35 / 100 · Some signals").waitFor();
-  console.log("Rendered score 35");
+  await page.locator(".explain-panel").getByText("Template explanation").waitFor();
+  await page.locator(".explain-panel h4", { hasText: "R-MINT · high · +25" }).waitFor();
+  await page.locator(".explain-panel code", { hasText: "dispatch-mint(address,uint256)" }).waitFor();
+  await page.locator(".explain-panel h4", { hasText: "R-OWNER-EOA · medium · +10" }).waitFor();
+  await page.locator(".explain-panel code", { hasText: "owner-code" }).waitFor();
+  await page.locator(".explain-panel").getByText(/Suggested read-only checks/).first().waitFor();
+  console.log("Rendered score 35 and template explanation");
   const download = page.waitForEvent("download");
   await page.getByText("Export canonical JSON").click();
   const json = await readFile(await (await download).path(), "utf8");
@@ -317,6 +325,7 @@ try {
   await fresh.getByLabel("Target contract address").fill(fixture);
   await fresh.getByText("Find latest").click();
   await fresh.getByText("Report body unavailable.", { exact: true }).waitFor();
+  await fresh.getByText(/insufficient evidence for an explanation/).waitFor();
   await fresh.getByLabel(/History index/).fill("0");
   await fresh.getByText("Read history entry").click();
   await fresh.getByText("Report body unavailable.", { exact: true }).waitFor();
@@ -475,7 +484,7 @@ try {
   await recoveryPage.getByLabel("Target contract address").fill(fixture);
   await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
   await recoveryPage.getByText("35 / 100 · Some signals").waitFor();
-  await recoveryPage.getByText("Block " + recoveryBlock).waitFor();
+  await recoveryPage.getByText("Chain 43113 · Block " + recoveryBlock).waitFor();
 
   assert.equal(
     await recoveryPage.evaluate(() => window.listenerCount("accountsChanged")),
@@ -744,7 +753,7 @@ try {
     window.walletState.sendCount = 0;
   }, attester);
   await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
-  await recoveryPage.getByText("Block " + replacedRevertedBlock).waitFor();
+  await recoveryPage.getByText("Chain 43113 · Block " + replacedRevertedBlock).waitFor();
   await check(recoveryPage, "ok", /Authorized local attester/);
   await recoveryPage.evaluate(() => {
     window.walletState.mode = "replaced-reverted";
@@ -787,7 +796,7 @@ try {
     window.walletState.mode = "ok";
   });
   await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
-  await recoveryPage.getByText("Block " + replacedSuccessBlock).waitFor();
+  await recoveryPage.getByText("Chain 43113 · Block " + replacedSuccessBlock).waitFor();
   await check(recoveryPage, "ok", /Authorized local attester/);
   await recoveryPage.evaluate(() => {
     window.walletState.sendCount = 0;
@@ -830,7 +839,7 @@ try {
     window.walletState.sendCount = 0;
   }, attester);
   await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
-  await recoveryPage.getByText("Block " + revertedBlock).waitFor();
+  await recoveryPage.getByText("Chain 43113 · Block " + revertedBlock).waitFor();
   await check(recoveryPage, "ok", /Authorized local attester/);
   await recoveryPage.evaluate(() => {
     window.walletState.mode = "reverted";
@@ -860,7 +869,7 @@ try {
     window.walletState.mode = "ok";
   });
   await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
-  await recoveryPage.getByText("Block " + noEventBlock).waitFor();
+  await recoveryPage.getByText("Chain 43113 · Block " + noEventBlock).waitFor();
   await check(recoveryPage, "ok", /Authorized local attester/);
   await recoveryPage.evaluate(() => {
     window.walletState.mode = "no-event";
@@ -892,7 +901,7 @@ try {
     window.walletState.sendCount = 0;
   }, attester);
   await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
-  await recoveryPage.getByText("Block " + postTimeoutBlock).waitFor();
+  await recoveryPage.getByText("Chain 43113 · Block " + postTimeoutBlock).waitFor();
   await check(recoveryPage, "ok", /Authorized local attester/);
   await anvilRpc("evm_setAutomine", [false]);
   await recoveryPage.evaluate(() => {
@@ -978,7 +987,7 @@ try {
     window.walletState.sendCount = 0;
   }, attester);
   await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
-  await recoveryPage.getByText("Block " + competingBlock).waitFor();
+  await recoveryPage.getByText("Chain 43113 · Block " + competingBlock).waitFor();
   await check(recoveryPage, "ok", /Authorized local attester/);
   await recoveryPage.evaluate(() => {
     window.walletState.holdSend = true;
@@ -1073,8 +1082,176 @@ try {
     1,
   );
 
+  // M6: Controlled delayed-response and fallback browser checks with a loopback mock explain server.
+  const heldRequests = [];
+  let explainMode = "hold-first";
+  let explainRequestCount = 0;
+  let markFirstExplainSeen;
+  const firstExplainSeen = new Promise((resolve) => {
+    markFirstExplainSeen = resolve;
+  });
+  const explainMock = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw);
+    const input = body.input;
+    explainRequestCount++;
+    const currentReqIndex = explainRequestCount;
+    if (currentReqIndex === 1) markFirstExplainSeen();
+    const makePayload = (tag) => ({
+      overview: `Signal score is ${input.signalScore} / 100 (${input.band}) [${tag}].`,
+      items: input.findings.map((f) => ({
+        findingId: f.id,
+        citedEvidenceIds: [...f.evidenceIds],
+        summary: `${f.id} explained via ${f.evidenceIds.join(", ")} [${tag}]; access control unverified.`,
+        suggestedCheckIds: f.allowedCheckIds.slice(0, 1),
+      })),
+    });
+
+    if (explainMode === "hold-first" && currentReqIndex === 1) {
+      await new Promise((resolve) => {
+        heldRequests.push(() => {
+          if (!res.writableEnded && !res.headersSent) {
+            res.setHeader("content-type", "application/json");
+            res.end(
+              JSON.stringify(makePayload(`STALE_BLOCK_${input.blockNumber}`)),
+            );
+          }
+          resolve();
+        });
+      });
+      return;
+    }
+    if (explainMode === "unsafe-claim") {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          ...makePayload("REJECTED"),
+          overview: "This contract is safe and audited with zero risk.",
+        }),
+      );
+      return;
+    }
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify(makePayload(`FRESH_BLOCK_${input.blockNumber}`)));
+  });
+  explainMock.listen(0, "127.0.0.1");
+  await once(explainMock, "listening");
+
+  const explainServer = spawn(
+    process.execPath,
+    [
+      "node_modules/next/dist/bin/next",
+      "start",
+      "-H",
+      "127.0.0.1",
+      "-p",
+      "31846",
+    ],
+    {
+      cwd: "apps/web",
+      windowsHide: true,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        AVAGUARD_ENV: "local",
+        AVAGUARD_AI_ENABLED: "1",
+        AVAGUARD_LOCAL_EXPLAIN_URL:
+          "http://127.0.0.1:" + explainMock.address().port,
+        REGISTRY_ADDRESS: registry,
+        FUJI_RPC_URL: "http://127.0.0.1:" + proxy.address().port,
+      },
+    },
+  );
+  const explainClosed = once(explainServer, "exit");
+  try {
+    const explainUrl = "http://127.0.0.1:31846";
+    for (let i = 0; i < 120; i++) {
+      if (explainServer.exitCode !== null)
+        throw Error("Explain Next server exited");
+      if (
+        await fetch(explainUrl)
+          .then((r) => r.ok)
+          .catch(() => false)
+      )
+        break;
+      await delay(250);
+    }
+
+    const explainPage = await browser.newPage();
+    activePage = explainPage;
+    explainPage.setDefaultTimeout(12000);
+    await explainPage.goto(explainUrl);
+    await explainPage.getByLabel("Target contract address").fill(fixture);
+    await explainPage.getByRole("button", { name: "Scan contract" }).click();
+
+    await explainPage.getByText("35 / 100 · Some signals").waitFor();
+    await explainPage
+      .locator(".explain-panel .provenance-badge")
+      .getByText("Template explanation", { exact: true })
+      .waitFor();
+    await explainPage
+      .getByText(/Requesting AI-assisted explanation/)
+      .waitFor();
+    // Export remains usable while AI explanation is still pending
+    const dlPending = explainPage.waitForEvent("download");
+    await explainPage.getByText("Export canonical JSON").click();
+    assert((await readFile(await (await dlPending).path(), "utf8")).length > 0);
+
+    await firstExplainSeen;
+    // Mine a new block and rescan the same fixture address before Scan #1 explanation resolves
+    await anvilRpc("evm_mine", []);
+    const block2 = parseInt(await anvilRpc("eth_blockNumber", []), 16);
+    await explainPage.getByRole("button", { name: "Scan contract" }).click();
+    await explainPage.getByText("Chain 43113 · Block " + block2).waitFor();
+    await explainPage
+      .locator(".explain-panel .provenance-badge")
+      .getByText("AI-assisted explanation", { exact: true })
+      .waitFor();
+    await explainPage
+      .locator(".explain-panel")
+      .getByText(new RegExp(`FRESH_BLOCK_${block2}`))
+      .first()
+      .waitFor();
+
+    // Release delayed Scan #1 AI response and confirm it is discarded
+    while (heldRequests.length) heldRequests.shift()();
+    await delay(200);
+    assert.equal(await explainPage.getByText(/STALE_BLOCK_/).count(), 0);
+    await explainPage
+      .locator(".explain-panel")
+      .getByText(new RegExp(`FRESH_BLOCK_${block2}`))
+      .first()
+      .waitFor();
+
+    // Rejected safety claim falls back to labeled template and hides rejected text
+    explainMode = "unsafe-claim";
+    await anvilRpc("evm_mine", []);
+    const block3 = parseInt(await anvilRpc("eth_blockNumber", []), 16);
+    await explainPage.getByRole("button", { name: "Scan contract" }).click();
+    await explainPage.getByText("Chain 43113 · Block " + block3).waitFor();
+    await explainPage
+      .locator(".explain-panel .provenance-badge")
+      .getByText("Template explanation", { exact: true })
+      .waitFor();
+    await explainPage
+      .locator(".explain-panel")
+      .getByText(/failed evidence or schema validation/)
+      .waitFor();
+    assert.equal(
+      await explainPage.getByText(/This contract is safe and audited/).count(),
+      0,
+    );
+  } finally {
+    while (heldRequests.length) heldRequests.shift()();
+    explainServer.kill();
+    await explainClosed;
+    explainMock.closeAllConnections();
+    explainMock.close();
+  }
+
   console.log(
-    "Browser passed: score 35, export, network/snapshot/rejection guards, confirmed receipt, receipt recovery, wallet events, mid-read chain round-trip, reverted/unverified/replaced/post-timeout-replaced/missing-hash/mismatched-hash/competing-nonce receipts, clean lookup, import races, replay, current state and pruned history.",
+    "Browser passed: score 35, template explanation, delayed stale-response discard, AI validation fallback, export, network/snapshot/rejection guards, confirmed receipt, receipt recovery, wallet events, mid-read chain round-trip, reverted/unverified/replaced/post-timeout-replaced/missing-hash/mismatched-hash/competing-nonce receipts, clean lookup, import races, replay, current state and pruned history.",
   );
 } catch (error) {
   console.error((await activePage?.locator("body").innerText())?.slice(-2500));

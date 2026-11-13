@@ -1,9 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { verifyCommitment, type ReportBody } from "@avaguard/analyzer";
+import {
+  buildTemplateExplanation,
+  verifyCommitment,
+  type ReportBody,
+} from "@avaguard/analyzer";
 import { agrees, differences } from "../lib/publication";
 import { lookup, replay, scan } from "./actions";
-import { Coverage } from "./report";
+import { Coverage, ExplanationPanel } from "./report";
 
 type Item = NonNullable<
   Extract<Awaited<ReturnType<typeof lookup>>, { ok: true }>["data"]
@@ -160,10 +164,11 @@ export function Inspection({ item }: { item: Item }) {
           ? "Confidence by observation: " +
             (body.findings.flatMap((f) => (f.confidence ? [f.confidence] : []))
               .join(", ") || "Scope only")
-          : "Coverage and confidence unavailable until a matching body is imported."}{" "}
+          : "A commitment alone has insufficient evidence for an explanation; coverage and confidence are unavailable until a matching body is imported."}{" "}
         Interpretation belongs to the attester.
       </p>
       {body && <Coverage coverage={body.coverage} />}
+      {body && <ExplanationPanel explanation={buildTemplateExplanation(body)} />}
       <details>
         <summary>Commitment fields</summary>
         <pre>{JSON.stringify(report, null, 2)}</pre>

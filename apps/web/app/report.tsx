@@ -1,5 +1,12 @@
-import { canonicalReportJson, type ReportBody } from "@avaguard/analyzer";
+"use client";
+import { useEffect, useState } from "react";
+import {
+  canonicalReportJson,
+  type ReportBody,
+  type ReportExplanation,
+} from "@avaguard/analyzer";
 import { Publish } from "./publish";
+
 export function Coverage({ coverage }: Pick<ReportBody, "coverage">) {
   return (
     <details>
@@ -23,7 +30,154 @@ export function Coverage({ coverage }: Pick<ReportBody, "coverage">) {
     </details>
   );
 }
-export function Report({ body, band }: { body: ReportBody; band: string }) {
+
+export function ExplanationPanel({
+  explanation,
+  pending = false,
+}: {
+  explanation: ReportExplanation;
+  pending?: boolean;
+}) {
+  const provenanceLabel =
+    explanation.provenance === "ai-assisted"
+      ? "AI-assisted explanation"
+      : "Template explanation";
+
+  return (
+    <article className="explain-panel" aria-label="Report explanation">
+      <div className="explain-header">
+        <h3>Explanation</h3>
+        <span className="provenance-badge">{provenanceLabel}</span>
+      </div>
+      {explanation.provenance === "ai-assisted" && explanation.model && (
+        <p className="explain-meta">
+          Model: <code>{explanation.model}</code> · Prompt v
+          {explanation.promptVersion ?? "1"}
+          {explanation.cached ? " · cached" : ""}
+        </p>
+      )}
+      {pending && (
+        <p role="status">
+          Requesting AI-assisted explanation… Showing template explanation
+          meanwhile.
+        </p>
+      )}
+      {explanation.fallbackReason && (
+        <p role="status">{explanation.fallbackReason}</p>
+      )}
+      <p>{explanation.overview}</p>
+      <p>{explanation.coverageSummary}</p>
+      {explanation.findings.length > 0 && (
+        <div className="explain-findings">
+          {explanation.findings.map((f) => (
+            <div key={f.findingId} className="explain-finding">
+              <h4>
+                {f.findingId} · {f.severity} · +{f.weight}
+              </h4>
+              <p>{f.summary}</p>
+              <p>{f.confidenceNote}</p>
+              <p>
+                Cited evidence:{" "}
+                {f.evidenceIds.map((id, idx) => (
+                  <span key={id}>
+                    {idx > 0 ? ", " : ""}
+                    <code>{id}</code>
+                  </span>
+                ))}
+              </p>
+              {f.suggestedChecks.length > 0 && (
+                <>
+                  <p>Suggested read-only checks (unexecuted):</p>
+                  <ul>
+                    {f.suggestedChecks.map((check) => (
+                      <li key={check}>{check}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+export function Report({
+  body,
+  band,
+  reportHash,
+  initialExplanation,
+  aiEnabled,
+}: {
+  body: ReportBody;
+  band: string;
+  reportHash: string;
+  initialExplanation: ReportExplanation;
+  aiEnabled: boolean;
+}) {
+  const [explanation, setExplanation] =
+    useState<ReportExplanation>(initialExplanation);
+  const [aiPending, setAiPending] = useState(aiEnabled);
+
+  useEffect(() => {
+    if (!aiEnabled) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const expectedHash = reportHash;
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/explain", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reportHash: expectedHash }),
+          signal: controller.signal,
+        });
+        const data = (await response.json()) as {
+          ok?: boolean;
+          explanation?: ReportExplanation;
+          error?: string;
+        };
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+        if (
+          response.ok &&
+          data.ok &&
+          data.explanation &&
+          data.explanation.reportHash === expectedHash
+        ) {
+          setExplanation(data.explanation);
+        } else {
+          setExplanation({
+            ...initialExplanation,
+            fallbackReason:
+              data.error ?? "AI explanation unavailable; showing template.",
+          });
+        }
+      } catch {
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+        setExplanation({
+          ...initialExplanation,
+          fallbackReason: "AI explanation unavailable; showing template.",
+        });
+      } finally {
+        if (!cancelled && !controller.signal.aborted) {
+          setAiPending(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [aiEnabled, initialExplanation, reportHash]);
+
   function download() {
     const url = URL.createObjectURL(
       new Blob([canonicalReportJson(body)], { type: "application/json" }),
@@ -75,6 +229,7 @@ export function Report({ body, band }: { body: ReportBody; band: string }) {
           ))}
         </details>
       ))}
+      <ExplanationPanel explanation={explanation} pending={aiPending} />
       <p>
         <button onClick={download}>Export canonical JSON</button>
       </p>

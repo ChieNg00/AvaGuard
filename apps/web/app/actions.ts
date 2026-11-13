@@ -1,6 +1,7 @@
 "use server";
 import {
   addressSchema,
+  buildIncompleteExplanation,
   buildReport,
   collectEvidence,
   createHttpTransport,
@@ -10,6 +11,7 @@ import {
   parseReportBody,
 } from "@avaguard/analyzer";
 import { createPublicClient, getAddress, http, keccak256 } from "viem";
+import { getExplainRuntime } from "../lib/explain-server";
 import { registryAbi as abi, registryRuntimeHash } from "../lib/registry-abi";
 
 class DisplayError extends Error {}
@@ -61,13 +63,22 @@ export async function scan(target: string) {
         address: address(target).toLowerCase(),
       }),
     );
-    if (result.status === "complete")
+    if (result.status === "complete") {
+      const runtime = getExplainRuntime();
+      const { reportHash, template } = runtime.registerBody(result.body);
       return {
         status: result.status,
         band: result.band,
         body: result.body,
+        reportHash,
+        explanation: template,
+        aiEnabled: runtime.isAiEnabled(),
       } as const;
-    return result;
+    }
+    return {
+      ...result,
+      explanation: buildIncompleteExplanation(result),
+    } as const;
   });
 }
 export async function replay(input: unknown, hash: string) {

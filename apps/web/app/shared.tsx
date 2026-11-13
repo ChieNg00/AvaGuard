@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { scan, lookup } from "./actions";
-import { Report, Coverage } from "./report";
+import { Report, Coverage, ExplanationPanel } from "./report";
 import { Inspection } from "./inspection";
 
 export function AddressForm({ action }: { action: "scan" | "lookup" }) {
@@ -10,6 +10,7 @@ export function AddressForm({ action }: { action: "scan" | "lookup" }) {
   const [result, setResult] = useState<Awaited<ReturnType<typeof scan>>>();
   const [record, setRecord] = useState<Awaited<ReturnType<typeof lookup>>>();
   const [index, setIndex] = useState("");
+  const [scanRevision, setScanRevision] = useState(0);
   const revision = useRef(0);
   function reset() {
     revision.current++;
@@ -20,6 +21,7 @@ export function AddressForm({ action }: { action: "scan" | "lookup" }) {
   async function submit(history?: string) {
     reset();
     const id = revision.current;
+    setScanRevision(id);
     setMessage("Reading snapshot…");
     try {
       if (action === "scan") {
@@ -76,12 +78,20 @@ export function AddressForm({ action }: { action: "scan" | "lookup" }) {
       </section>
       {result?.ok &&
         (result.data.status === "complete" ? (
-          <Report body={result.data.body} band={result.data.band} />
+          <Report
+            key={`${scanRevision}:${result.data.reportHash}`}
+            body={result.data.body}
+            band={result.data.band}
+            reportHash={result.data.reportHash}
+            initialExplanation={result.data.explanation}
+            aiEnabled={result.data.aiEnabled}
+          />
         ) : (
           <section>
             <h2>{result.data.status}</h2>
             <p>{result.data.reason} · No score available</p>
             <Coverage coverage={result.data.coverage} />
+            <ExplanationPanel explanation={result.data.explanation} />
           </section>
         ))}
       {record?.ok && record.data && (
