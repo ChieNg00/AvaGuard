@@ -6,7 +6,6 @@ import {
   custom,
   getAddress,
   keccak256,
-  parseEventLogs,
   type Address,
   type EIP1193Provider,
 } from "viem";
@@ -14,46 +13,205 @@ import { avalancheFuji } from "viem/chains";
 import type { ReportBody } from "@avaguard/analyzer";
 import { registryAbi as abi } from "../lib/registry-abi";
 import { publication } from "../lib/publication";
+import { verifySubmissionReceipt, type Submission } from "../lib/receipt";
 import { walletContext } from "./actions";
+
+const INITIAL_MESSAGE =
+  "Connect the disposable attester wallet to check permission.";
 
 function injected() {
   return (window as Window & { ethereum?: EIP1193Provider }).ethereum;
 }
+
 export function Publish({ body }: { body: ReportBody }) {
-  const revision = useRef(0),
-    lock = useRef(false);
-  const [ready, setReady] = useState<Address>(),
-    [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false),
-    [message, setMessage] = useState(
-      "Connect the disposable attester wallet to check permission.",
-    );
+  const expected = publication(body);
+  const reportKey = `${body.blockHash}:${body.address}:${expected.reportHash}`;
+  const [trackedKey, setTrackedKey] = useState(reportKey);
+  const [ready, setReady] = useState<Address>();
+  const [busy, setBusy] = useState(false);
+  const [submission, setSubmission] = useState<Submission>();
+  const [message, setMessage] = useState(INITIAL_MESSAGE);
+
+  if (trackedKey !== reportKey) {
+    setTrackedKey(reportKey);
+    setReady(undefined);
+    setBusy(false);
+    setSubmission(undefined);
+    setMessage(INITIAL_MESSAGE);
+  }
+
+  const state = useRef({
+    reportRevision: 0,
+    walletRevision: 0,
+    chainRevision: 0,
+    receiptCheckId: 0,
+    lock: false,
+    receiptLock: false,
+    submission: undefined as Submission | undefined,
+    abort: undefined as AbortController | undefined,
+  });
+
   useEffect(() => {
+    const ref = state.current;
     const provider = injected();
-    const invalidate = () => {
-      revision.current++;
-    };
-    const changed = () => {
-      invalidate();
+    const onAccountsChanged = () => {
+      ref.walletRevision++;
       setReady(undefined);
-      setMessage("Wallet changed. Check the account and network again.");
+      const current = ref.submission;
+      if (!current) {
+        setMessage("Wallet changed. Check the account and network again.");
+        return;
+      }
+      if (current.status === "pending" && !ref.receiptLock) {
+        setMessage(
+          "Wallet account changed. Use Check receipt to verify the original submission.",
+        );
+      } else if (
+        current.status === "reverted" ||
+        current.status === "unverified"
+      ) {
+        setMessage("Wallet changed. Check the account and network again.");
+      }
     };
-    provider?.on("accountsChanged", changed);
-    provider?.on("chainChanged", changed);
+    const onChainChanged = () => {
+      ref.walletRevision++;
+      ref.chainRevision++;
+      setReady(undefined);
+      const current = ref.submission;
+      if (!current) {
+        setMessage("Wallet changed. Check the account and network again.");
+        return;
+      }
+      if (current.status === "pending" && !ref.receiptLock) {
+        setMessage(
+          "Wallet network changed. Select the original local Anvil network (43113) and use Check receipt.",
+        );
+      } else if (
+        current.status === "reverted" ||
+        current.status === "unverified"
+      ) {
+        setMessage("Wallet changed. Check the account and network again.");
+      }
+    };
+    provider?.on("accountsChanged", onAccountsChanged);
+    provider?.on("chainChanged", onChainChanged);
     return () => {
-      invalidate();
-      provider?.removeListener("accountsChanged", changed);
-      provider?.removeListener("chainChanged", changed);
+      ref.abort?.abort();
+      ref.abort = undefined;
+      ref.reportRevision++;
+      ref.receiptCheckId++;
+      ref.lock = false;
+      ref.receiptLock = false;
+      ref.submission = undefined;
+      provider?.removeListener("accountsChanged", onAccountsChanged);
+      provider?.removeListener("chainChanged", onChainChanged);
     };
-  }, []);
+  }, [reportKey]);
+
+  async function readReceiptFor(
+    target: Submission,
+    { wait, reportToken }: { wait: boolean; reportToken: number },
+  ) {
+    const ref = state.current;
+    if (ref.receiptLock) return;
+    ref.receiptLock = true;
+    const checkId = ++ref.receiptCheckId;
+    const controller = new AbortController();
+    ref.abort = controller;
+    try {
+      if (!["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) {
+        if (ref.reportRevision === reportToken && ref.receiptCheckId === checkId)
+          setMessage("Open AvaGuard on loopback.");
+        return;
+      }
+      const provider = injected();
+      if (!provider) {
+        if (ref.reportRevision === reportToken && ref.receiptCheckId === checkId)
+          setMessage(
+            "No injected wallet detected. Reconnect the wallet on local Anvil (43113) and use Check receipt.",
+          );
+        return;
+      }
+      const reader = createPublicClient({
+        transport: custom(provider, { retryCount: 0 }),
+      });
+      const outcome = await verifySubmissionReceipt({
+        reader,
+        checkContext: walletContext,
+        submission: target,
+        wait,
+        signal: controller.signal,
+        getChainRevision: () => ref.chainRevision,
+      });
+      if (ref.reportRevision !== reportToken || ref.receiptCheckId !== checkId)
+        return;
+      if (outcome.status === "confirmed") {
+        const confirmed: Submission = { ...target, status: "confirmed" };
+        ref.submission = confirmed;
+        setSubmission(confirmed);
+        setMessage("Confirmed publication: " + outcome.hash);
+        return;
+      }
+      if (outcome.status === "reverted") {
+        const reverted: Submission = { ...target, status: "reverted" };
+        ref.submission = reverted;
+        setSubmission(reverted);
+        setMessage(
+          "Publication reverted: " +
+            outcome.hash +
+            ". Check wallet before trying again.",
+        );
+        return;
+      }
+      if (outcome.status === "unverified") {
+        const unverified: Submission = { ...target, status: "unverified" };
+        ref.submission = unverified;
+        setSubmission(unverified);
+        setMessage(
+          "Publication not verified (receipt contains no matching ReportPublished event): " +
+            outcome.hash,
+        );
+        return;
+      }
+      setMessage(outcome.message);
+    } catch (e) {
+      if (
+        controller.signal.aborted ||
+        (typeof e === "object" &&
+          e !== null &&
+          "name" in e &&
+          e.name === "AbortError")
+      )
+        return;
+      if (ref.reportRevision === reportToken && ref.receiptCheckId === checkId)
+        setMessage(
+          "Receipt unavailable. Use Check receipt to verify the submitted transaction.",
+        );
+    } finally {
+      if (ref.abort === controller) ref.abort = undefined;
+      if (ref.receiptCheckId === checkId) ref.receiptLock = false;
+    }
+  }
+
   async function run(write: boolean) {
-    if (lock.current || sent) return;
-    lock.current = true;
+    const ref = state.current;
+    if (ref.lock) return;
+    const active = ref.submission;
+    if (
+      write &&
+      (active?.status === "pending" || active?.status === "confirmed")
+    )
+      return;
+    ref.lock = true;
     setBusy(true);
     setReady(undefined);
-    const token = revision.current;
-    function current() {
-      if (revision.current !== token)
+    const reportToken = ref.reportRevision;
+    const walletToken = ref.walletRevision;
+    function ensurePreSignUnchanged() {
+      if (
+        ref.reportRevision !== reportToken ||
+        ref.walletRevision !== walletToken
+      )
         throw new Error("Wallet or report changed.");
     }
     let stage = "Wallet check failed";
@@ -70,9 +228,10 @@ export function Publish({ body }: { body: ReportBody }) {
       const accounts = write
         ? await wallet.getAddresses()
         : await wallet.requestAddresses();
-      const account = accounts[0];
-      if (!account) throw new Error("Wallet is disconnected.");
-      if (write && account !== ready)
+      const rawAccount = accounts[0];
+      if (!rawAccount) throw new Error("Wallet is disconnected.");
+      const account = getAddress(rawAccount);
+      if (write && (!ready || account !== getAddress(ready)))
         throw new Error("Wallet account changed. Check the wallet again.");
       if ((await wallet.getChainId()) !== 43113)
         throw new Error(
@@ -106,12 +265,14 @@ export function Publish({ body }: { body: ReportBody }) {
         functionName: "publish",
         args,
       });
+      const latestAccount = (await wallet.getAddresses())[0];
       if (
-        getAddress((await wallet.getAddresses())[0]) !== account ||
+        !latestAccount ||
+        getAddress(latestAccount) !== account ||
         (await wallet.getChainId()) !== 43113
       )
         throw new Error("Wallet account or network changed.");
-      current();
+      ensurePreSignUnchanged();
       if (!write) {
         setReady(account);
         setMessage("Authorized local attester: " + account);
@@ -125,45 +286,98 @@ export function Publish({ body }: { body: ReportBody }) {
         functionName: "publish",
         args,
       });
-      setSent(true);
-      setMessage("Pending receipt: " + hash);
-      stage =
-        "Receipt unavailable. Check the submitted transaction in your wallet";
-      const receipt = await reader.waitForTransactionReceipt({
+      if (ref.reportRevision !== reportToken) return;
+      const next: Submission = {
         hash,
-        timeout: 60000,
-      });
-      current();
-      const published = parseEventLogs({abi, logs: receipt.logs, eventName: "ReportPublished"})
-        .some(event => event.address.toLowerCase() === address.toLowerCase() &&
-          event.args.reportHash === args[0].reportHash && event.args.attester.toLowerCase() === account.toLowerCase());
-      setSent(published);
-      setMessage(
-        (receipt.status === "reverted" ? "Publication reverted: " :
-          published ? "Confirmed publication: " : "Receipt contains no matching publication: ") + receipt.transactionHash,
-      );
+        registry: address,
+        registryCodehash: ctx.data.codehash,
+        attester: account,
+        target: args[0].target,
+        reportHash: args[0].reportHash,
+        blockNumber: body.blockNumber,
+        blockHash: body.blockHash,
+        status: "pending",
+      };
+      ref.submission = next;
+      setSubmission(next);
+      setMessage("Pending receipt: " + hash);
+      await readReceiptFor(next, { wait: true, reportToken });
     } catch (e) {
-      if (revision.current === token)
+      if (ref.reportRevision === reportToken)
         setMessage(
           e instanceof Error && e.constructor === Error
             ? e.message
             : stage + ".",
         );
     } finally {
-      lock.current = false;
-      setBusy(false);
+      if (ref.reportRevision === reportToken) {
+        ref.lock = false;
+        setBusy(false);
+      }
     }
   }
+
+  async function checkReceipt() {
+    const ref = state.current;
+    const target = ref.submission;
+    if (
+      ref.lock ||
+      ref.receiptLock ||
+      !target ||
+      target.status !== "pending"
+    )
+      return;
+    ref.lock = true;
+    setBusy(true);
+    const reportToken = ref.reportRevision;
+    setMessage("Checking receipt…");
+    try {
+      await readReceiptFor(target, { wait: false, reportToken });
+    } finally {
+      if (ref.reportRevision === reportToken) {
+        ref.lock = false;
+        setBusy(false);
+      }
+    }
+  }
+
+  const pending = submission?.status === "pending";
+  const confirmed = submission?.status === "confirmed";
   return (
     <article>
       <h3>Publish commitment</h3>
       <p role="status">{message}</p>
-      <button disabled={busy || sent} onClick={() => run(false)}>
+      {submission && (
+        <p>
+          Submitted transaction: <code>{submission.hash}</code>
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={busy || pending || confirmed}
+        onClick={() => void run(false)}
+      >
         Check wallet
       </button>{" "}
-      <button disabled={!ready || busy || sent} onClick={() => run(true)}>
+      <button
+        type="button"
+        disabled={!ready || busy || pending || confirmed}
+        onClick={() => void run(true)}
+      >
         Publish
       </button>
+      {pending && (
+        <>
+          {" "}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void checkReceipt()}
+          >
+            Check receipt
+          </button>
+        </>
+      )}
     </article>
   );
 }

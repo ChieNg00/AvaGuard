@@ -9,6 +9,23 @@ import assert from "node:assert/strict";
 
 const [rpc, registry, fixture, attester] = process.argv.slice(2);
 assert.equal(rpc, "http://127.0.0.1:18545");
+let rpcSeq = 0;
+async function anvilRpc(method, params = []) {
+  const r = await (
+    await fetch(rpc, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: ++rpcSeq,
+        jsonrpc: "2.0",
+        method,
+        params,
+      }),
+    })
+  ).json();
+  if (r.error) throw Error(r.error.message);
+  return r.result;
+}
 let prune = false;
 const proxy = createServer(async (req, res) => {
   try {
@@ -60,6 +77,117 @@ const server = spawn(
   },
 );
 const closed = once(server, "exit");
+
+async function installProvider(targetPage, initialAccount) {
+  await targetPage.exposeFunction("testRpc", async ({ method, params }) =>
+    anvilRpc(method, params ?? []),
+  );
+  await targetPage.evaluate((account) => {
+    const listeners = new Map();
+    let sendGate = null;
+    let receiptGate = null;
+    window.walletState = {
+      mode: "wrong",
+      receiptMode: "ok",
+      activeAccount: account,
+      sendCount: 0,
+      sendPending: false,
+      holdSend: false,
+      receiptPending: false,
+      holdReceipt: false,
+      lastTxHash: null,
+    };
+    window.emitWallet = (event, data) => {
+      for (const fn of [...(listeners.get(event) ?? [])]) fn(data);
+    };
+    window.listenerCount = (event) => listeners.get(event)?.size ?? 0;
+    window.releaseSend = () => {
+      sendGate?.();
+      sendGate = null;
+    };
+    window.releaseReceipt = () => {
+      receiptGate?.();
+      receiptGate = null;
+    };
+    window.ethereum = {
+      on(event, fn) {
+        const set = listeners.get(event) ?? new Set();
+        set.add(fn);
+        listeners.set(event, set);
+      },
+      removeListener(event, fn) {
+        listeners.get(event)?.delete(fn);
+      },
+      async request(call) {
+        const s = window.walletState;
+        if (["eth_accounts", "eth_requestAccounts"].includes(call.method))
+          return [s.activeAccount];
+        if (s.mode === "wrong" && call.method === "eth_chainId") return "0x1";
+        if (call.method === "eth_sendTransaction") {
+          if (s.mode === "reject")
+            throw Object.assign(Error("Rejected"), { code: 4001 });
+          if (s.holdSend) {
+            s.sendPending = true;
+            await new Promise((resolve) => {
+              sendGate = resolve;
+            });
+            s.sendPending = false;
+            s.holdSend = false;
+          }
+          s.sendCount++;
+          let nextCall = call;
+          if (s.mode === "reverted") {
+            nextCall = {
+              ...call,
+              params: [
+                {
+                  ...call.params[0],
+                  data: "0xdeadbeef",
+                  gas: call.params[0]?.gas ?? "0x30d40",
+                },
+              ],
+            };
+          } else if (s.mode === "no-event") {
+            nextCall = {
+              ...call,
+              params: [
+                {
+                  ...call.params[0],
+                  to: s.activeAccount,
+                  data: "0x",
+                  gas: "0x5208",
+                },
+              ],
+            };
+          }
+          const hash = await window.testRpc(nextCall);
+          s.lastTxHash = hash;
+          return hash;
+        }
+        if (call.method === "eth_getTransactionReceipt") {
+          if (s.holdReceipt) {
+            s.receiptPending = true;
+            await new Promise((resolve) => {
+              receiptGate = resolve;
+            });
+            s.receiptPending = false;
+            s.holdReceipt = false;
+          }
+          if (s.receiptMode === "unavailable")
+            throw Object.assign(Error("Receipt RPC unavailable"), {
+              code: -32000,
+            });
+          if (s.receiptMode === "null") return null;
+        }
+        const result = await window.testRpc(call);
+        if (s.mode === "mismatch" && call.method === "eth_getBlockByNumber")
+          result.hash = "0x" + "f".repeat(64);
+        return result;
+      },
+    };
+  }, initialAccount);
+}
+
 let browser, activePage;
 try {
   const url = "http://127.0.0.1:31845";
@@ -81,7 +209,10 @@ try {
   await page.getByLabel("Target contract address").fill("0x" + "9".repeat(40));
   await page.getByRole("button", { name: "Scan contract" }).click();
   await page.getByText(/no-bytecode · No score available/).waitFor();
-  assert.equal(await page.getByRole("button", {name:"Publish",exact:true}).count(), 0);
+  assert.equal(
+    await page.getByRole("button", { name: "Publish", exact: true }).count(),
+    0,
+  );
   await page.getByLabel("Target contract address").fill(fixture);
   await page.getByRole("button", { name: "Scan contract" }).click();
   await page.getByText("35 / 100 · Some signals").waitFor();
@@ -90,66 +221,31 @@ try {
   await page.getByText("Export canonical JSON").click();
   const json = await readFile(await (await download).path(), "utf8");
   console.log("Exported canonical body");
-  await page.exposeFunction("testRpc", async ({ method, params }) => {
-    const r = await (
-      await fetch(rpc, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          id: 1,
-          jsonrpc: "2.0",
-          method,
-          params: params ?? [],
-        }),
-      })
-    ).json();
-    if (r.error) throw Error(r.error.message);
-    return r.result;
-  });
-  await page.evaluate((account) => {
-    window.mode = "wrong";
-    window.ethereum = {
-      on() {},
-      removeListener() {},
-      async request(call) {
-        if (["eth_accounts", "eth_requestAccounts"].includes(call.method))
-          return [account];
-        if (window.mode === "wrong" && call.method === "eth_chainId")
-          return "0x1";
-        if (window.mode === "reject" && call.method === "eth_sendTransaction")
-          throw Object.assign(Error("Rejected"), { code: 4001 });
-        const result = await window.testRpc(call);
-        if (
-          window.mode === "mismatch" &&
-          call.method === "eth_getBlockByNumber"
-        )
-          result.hash = "0x" + "f".repeat(64);
-        return result;
-      },
-    };
-  }, attester);
-  async function check(mode, label) {
+
+  await installProvider(page, attester);
+  async function check(targetPage, mode, label) {
     console.log("Wallet scenario", mode);
-    await page.evaluate((m) => {
-      window.mode = m;
+    await targetPage.evaluate((m) => {
+      window.walletState.mode = m;
     }, mode);
-    await page.getByText("Check wallet", { exact: true }).click();
-    await page.getByText(label).waitFor();
+    await targetPage.getByText("Check wallet", { exact: true }).click();
+    await targetPage.getByText(label).waitFor();
   }
-  await check("wrong", /Wrong wallet network/);
+  await check(page, "wrong", /Wrong wallet network/);
   assert(
     await page
       .getByRole("button", { name: "Publish", exact: true })
       .isDisabled(),
   );
-  await check("mismatch", /registry or snapshot mismatch/);
-  await check("reject", /Authorized local attester/);
+  await check(page, "mismatch", /registry or snapshot mismatch/);
+  await check(page, "reject", /Authorized local attester/);
   await page.getByRole("button", { name: "Publish", exact: true }).click();
   await page.getByText(/Wallet rejected/).waitFor();
-  await check("ok", /Authorized local attester/);
+  await check(page, "ok", /Authorized local attester/);
   await page.getByRole("button", { name: "Publish", exact: true }).click();
   await page.getByText(/Confirmed publication: 0x[0-9a-f]{64}/).waitFor();
   console.log(await page.getByText(/Confirmed publication:/).innerText());
+
   const fresh = await browser.newPage();
   activePage = fresh;
   fresh.setDefaultTimeout(12000);
@@ -163,33 +259,391 @@ try {
   await fresh.getByLabel(/History index/).fill("0");
   await fresh.getByText("Read history entry").click();
   await fresh.getByText("Report body unavailable.", { exact: true }).waitFor();
-  async function upload(text, expected) {
-    await fresh
-      .getByLabel("Import canonical JSON")
-      .setInputFiles({
-        name: "report.json",
-        mimeType: "application/json",
-        buffer: Buffer.from(text),
-      });
-    await fresh.getByText(expected).waitFor();
+
+  async function uploadNamed(name, text, expected) {
+    await fresh.getByLabel("Import canonical JSON").setInputFiles({
+      name,
+      mimeType: "application/json",
+      buffer: Buffer.from(text),
+    });
+    if (expected) await fresh.getByText(expected).waitFor();
   }
-  await upload("{", /Malformed JSON/);
-  await upload("{}", /Invalid report schema/);
+  await uploadNamed("report.json", "{", /Malformed JSON/);
+  await uploadNamed("report.json", "{}", /Invalid report schema/);
   const changed = JSON.parse(json);
   changed.findings[0].explanation += " altered";
-  await upload(JSON.stringify(changed), /Hash mismatch/);
-  await upload(json, /Hash and registry summary fields agree/);
+  await uploadNamed("report.json", JSON.stringify(changed), /Hash mismatch/);
+  await uploadNamed(
+    "report.json",
+    json,
+    /Hash and registry summary fields agree/,
+  );
   await fresh.getByText("Replay original block").click();
   await fresh.getByText(/Original-block replay: replay-matches/).waitFor();
   await fresh.getByText("Scan current state").click();
   await fresh.getByText(/No semantic changes/).waitFor();
+
+  // P3: Import race regressions on Lookup
+  await fresh.evaluate(() => {
+    const origText = File.prototype.text;
+    const gates = new Map();
+    window.gateFile = (name) => {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      gates.set(name, { gate, release, done: null });
+    };
+    window.releaseFile = async (name) => {
+      const entry = gates.get(name);
+      if (!entry) throw new Error("Missing gate for " + name);
+      gates.delete(name);
+      entry.release();
+      if (entry.done) await entry.done;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    File.prototype.text = function patchedText() {
+      const p = origText.call(this);
+      const entry = gates.get(this.name);
+      if (!entry) return p;
+      const combined = (async () => {
+        await entry.gate;
+        return p;
+      })();
+      entry.done = combined.catch(() => {});
+      return combined;
+    };
+  });
+
+  const replayBtn = fresh.getByRole("button", { name: "Replay original block" });
+  const scanBtn = fresh.getByRole("button", { name: "Scan current state" });
+
+  // 1. Delayed single file guards Replay & Scan current state, then accepts without reselecting.
+  await fresh.evaluate(() => window.gateFile("delayed-valid.json"));
+  await uploadNamed("delayed-valid.json", json, /Importing report body/);
+  assert(await replayBtn.isDisabled());
+  assert(await scanBtn.isDisabled());
+  await fresh.evaluate(() => window.releaseFile("delayed-valid.json"));
+  await fresh.getByText(/Hash and registry summary fields agree/).waitFor();
+  assert(!(await replayBtn.isDisabled()));
+  assert(!(await scanBtn.isDisabled()));
+
+  // 2. File A followed by File B completing in reverse order.
+  await fresh.evaluate(() => {
+    window.gateFile("race-a.json");
+    window.gateFile("race-b.json");
+  });
+  await uploadNamed("race-a.json", "{", /Importing report body/);
+  await uploadNamed("race-b.json", json, /Importing report body/);
+  await fresh.evaluate(() => window.releaseFile("race-b.json"));
+  await fresh.getByText(/Hash and registry summary fields agree/).waitFor();
+  assert(!(await replayBtn.isDisabled()));
+  assert(!(await scanBtn.isDisabled()));
+  await fresh.evaluate(() => window.releaseFile("race-a.json"));
+  await fresh.getByText(/Hash and registry summary fields agree/).waitFor();
+  assert.equal(await fresh.getByText(/Malformed JSON/).count(), 0);
+  assert(!(await replayBtn.isDisabled()));
+  assert(!(await scanBtn.isDisabled()));
+
+  // 3. Starting an import invalidates an outstanding comparison.
+  let compareSawRequest;
+  const compareSeen = new Promise((resolve) => {
+    compareSawRequest = resolve;
+  });
+  let releaseCompareRoute;
+  await fresh.route("**/lookup", async (route) => {
+    const req = route.request();
+    if (req.method() === "POST" && req.headers()["next-action"]) {
+      compareSawRequest();
+      await new Promise((resolve) => {
+        releaseCompareRoute = resolve;
+      });
+    }
+    await route.continue();
+  });
+  await scanBtn.click();
+  await fresh.getByText("Reading…").waitFor();
+  await compareSeen;
+  await uploadNamed(
+    "after-compare.json",
+    json,
+    /Hash and registry summary fields agree/,
+  );
+  const compareResponse = fresh.waitForResponse(
+    (res) =>
+      res.url().includes("/lookup") && res.request().method() === "POST",
+  );
+  releaseCompareRoute();
+  await compareResponse;
+  await fresh.unroute("**/lookup");
+  await fresh.evaluate(() => new Promise((r) => setTimeout(r, 0)));
+  assert.equal(await fresh.locator('pre[role="status"]').innerText(), "");
+
+  // 4. Recovery after malformed JSON leaves Replay disabled, restores Scan current state, and allows re-import.
+  await uploadNamed("bad.json", "{", /Malformed JSON/);
+  assert(await replayBtn.isDisabled());
+  assert(!(await scanBtn.isDisabled()));
+  await scanBtn.click();
+  await fresh.getByText(/Full diff unavailable without original body/).waitFor();
+  await uploadNamed(
+    "recovered.json",
+    json,
+    /Hash and registry summary fields agree/,
+  );
+  assert(!(await replayBtn.isDisabled()));
+  await replayBtn.click();
+  await fresh.getByText(/Original-block replay: replay-matches/).waitFor();
+
+  // Original pruned-state replay check
   prune = true;
-  await fresh.getByText("Replay original block").click();
+  await replayBtn.click();
   await fresh
     .getByText(/inconclusive · historical-state-unavailable/)
     .waitFor();
+  prune = false;
+
+  // P2: Receipt recovery and wallet events with provider installed before Publish subscribes.
+  await anvilRpc("evm_mine", []);
+  const recoveryBlock = parseInt(await anvilRpc("eth_blockNumber", []), 16);
+  const recoveryPage = await browser.newPage();
+  activePage = recoveryPage;
+  recoveryPage.setDefaultTimeout(12000);
+  await recoveryPage.goto(url);
+  await installProvider(recoveryPage, attester);
+
+  await recoveryPage.getByLabel("Target contract address").fill(fixture);
+  await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
+  await recoveryPage.getByText("35 / 100 · Some signals").waitFor();
+  await recoveryPage.getByText("Block " + recoveryBlock).waitFor();
+
+  assert.equal(
+    await recoveryPage.evaluate(() => window.listenerCount("accountsChanged")),
+    1,
+  );
+  assert.equal(
+    await recoveryPage.evaluate(() => window.listenerCount("chainChanged")),
+    1,
+  );
+
+  const checkWalletBtn = recoveryPage.getByRole("button", {
+    name: "Check wallet",
+    exact: true,
+  });
+  const publishBtn = recoveryPage.getByRole("button", {
+    name: "Publish",
+    exact: true,
+  });
+  const checkReceiptBtn = recoveryPage.getByRole("button", {
+    name: "Check receipt",
+    exact: true,
+  });
+
+  // Pre-hash rejection still permits retry.
+  await check(recoveryPage, "reject", /Authorized local attester/);
+  await publishBtn.click();
+  await recoveryPage.getByText(/Wallet rejected/).waitFor();
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    0,
+  );
+  assert.equal(
+    await recoveryPage.getByText(/Submitted transaction:/).count(),
+    0,
+  );
+
+  // Publish once, capture real hash even if accountsChanged fires while wallet dialog is open,
+  // fail initial receipt read at application boundary, then test pending/wrong-network/same-chain-ID mismatch/recovery.
+  await check(recoveryPage, "ok", /Authorized local attester/);
+  await recoveryPage.evaluate(() => {
+    window.walletState.sendCount = 0;
+    window.walletState.holdSend = true;
+    window.walletState.receiptMode = "unavailable";
+  });
+  await publishBtn.click();
+  await recoveryPage.waitForFunction(
+    () => window.walletState.sendPending === true,
+  );
+  const changedAccount = "0x" + "8".repeat(40);
+  await recoveryPage.evaluate((nextAcc) => {
+    window.walletState.activeAccount = nextAcc;
+    window.emitWallet("accountsChanged", [nextAcc]);
+    window.releaseSend();
+  }, changedAccount);
+
+  await recoveryPage.getByText(/Receipt unavailable/).waitFor();
+  const txHash = await recoveryPage.evaluate(
+    () => window.walletState.lastTxHash,
+  );
+  assert.match(txHash, /^0x[0-9a-f]{64}$/);
+  const hashCode = recoveryPage.locator("article code", { hasText: txHash });
+  await hashCode.waitFor();
+  assert.notEqual(
+    await hashCode.evaluate((el) => getComputedStyle(el).userSelect),
+    "none",
+  );
+  assert(await publishBtn.isDisabled());
+  assert(await checkWalletBtn.isDisabled());
+  assert(!(await checkReceiptBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Pending receipt response (null) keeps hash visible and Publish locked.
+  await recoveryPage.evaluate(() => {
+    window.walletState.receiptMode = "null";
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.getByText(/still pending/).waitFor();
+  await hashCode.waitFor();
+  assert(await publishBtn.isDisabled());
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Wrong-network read (0x1) after chainChanged cannot confirm or submit twice.
+  await recoveryPage.evaluate(() => {
+    window.walletState.receiptMode = "ok";
+    window.walletState.mode = "wrong";
+    window.emitWallet("chainChanged", "0x1");
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.getByText(/Wrong wallet network/).waitFor();
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  await hashCode.waitFor();
+  assert(await publishBtn.isDisabled());
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Same-chain-ID mismatch (43113 with conflicting blockHash) after chainChanged cannot confirm or submit twice.
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "mismatch";
+    window.emitWallet("chainChanged", "0xa869");
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.getByText(/registry or snapshot mismatch/).waitFor();
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  await hashCode.waitFor();
+  assert(await publishBtn.isDisabled());
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Single active receipt check lock + mid-read chainChanged to wrong network cannot confirm.
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "ok";
+    window.walletState.holdReceipt = true;
+    window.emitWallet("chainChanged", "0xa869");
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.waitForFunction(
+    () => window.walletState.receiptPending === true,
+  );
+  assert(await checkReceiptBtn.isDisabled());
+  assert(await publishBtn.isDisabled());
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "wrong";
+    window.emitWallet("chainChanged", "0x1");
+    window.releaseReceipt();
+  });
+  await recoveryPage.getByText(/Wrong wallet network/).waitFor();
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  await hashCode.waitFor();
+  assert(await publishBtn.isDisabled());
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Restore local Anvil network (keeping changedAccount active!) and recover with original attester.
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "ok";
+    window.walletState.receiptMode = "ok";
+    window.emitWallet("chainChanged", "0xa869");
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.getByText("Confirmed publication: " + txHash).waitFor();
+  await hashCode.waitFor();
+  assert(await publishBtn.isDisabled());
+  assert(await checkWalletBtn.isDisabled());
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Reverted receipt + deliberate retry after checking wallet again.
+  await anvilRpc("evm_mine", []);
+  const revertedBlock = parseInt(await anvilRpc("eth_blockNumber", []), 16);
+  await recoveryPage.evaluate((origAcc) => {
+    window.walletState.activeAccount = origAcc;
+    window.walletState.mode = "ok";
+    window.walletState.sendCount = 0;
+  }, attester);
+  await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
+  await recoveryPage.getByText("Block " + revertedBlock).waitFor();
+  await check(recoveryPage, "ok", /Authorized local attester/);
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "reverted";
+  });
+  await publishBtn.click();
+  await recoveryPage.getByText(/Publication reverted: 0x[0-9a-f]{64}/).waitFor();
+  const revertedHash = await recoveryPage.evaluate(
+    () => window.walletState.lastTxHash,
+  );
+  await recoveryPage
+    .locator("article code", { hasText: revertedHash })
+    .waitFor();
+  assert(await publishBtn.isDisabled());
+  assert(!(await checkWalletBtn.isDisabled()));
+
+  // Deliberate new attempt after checking wallet again succeeds.
+  await check(recoveryPage, "ok", /Authorized local attester/);
+  await publishBtn.click();
+  await recoveryPage
+    .getByText(/Confirmed publication: 0x[0-9a-f]{64}/)
+    .waitFor();
+
+  // Successful receipt without ReportPublished shows unverified and keeps hash available.
+  await anvilRpc("evm_mine", []);
+  const noEventBlock = parseInt(await anvilRpc("eth_blockNumber", []), 16);
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "ok";
+  });
+  await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
+  await recoveryPage.getByText("Block " + noEventBlock).waitFor();
+  await check(recoveryPage, "ok", /Authorized local attester/);
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "no-event";
+  });
+  await publishBtn.click();
+  await recoveryPage.getByText(/Publication not verified/).waitFor();
+  const noEventHash = await recoveryPage.evaluate(
+    () => window.walletState.lastTxHash,
+  );
+  await recoveryPage
+    .locator("article code", { hasText: noEventHash })
+    .waitFor();
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  assert(await publishBtn.isDisabled());
+
   console.log(
-    "Browser passed: score 35, export, network/snapshot/rejection guards, confirmed receipt, clean lookup, import, replay, current state and pruned history.",
+    "Browser passed: score 35, export, network/snapshot/rejection guards, confirmed receipt, receipt recovery, wallet events, reverted/unverified receipts, clean lookup, import races, replay, current state and pruned history.",
   );
 } catch (error) {
   console.error((await activePage?.locator("body").innerText())?.slice(-2500));

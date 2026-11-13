@@ -23,7 +23,7 @@ Use Node 24, pnpm 12.4.2 and Foundry 1.9.0. Run shell examples from the reposito
    ```
 
 4. Scan the printed fixture address with the wallet disconnected. Expect **35 / 100 · Some signals**, mint dispatch evidence and a nonzero owner without code. Export canonical JSON.
-5. In Core select the disposable account and a custom network with RPC `http://127.0.0.1:8545`, chain ID `43113`, currency `AVAX`. Check the endpoint in the wallet. If the wallet routes this ID to Fuji, the local snapshot check must fail. Select **Check wallet**, then **Publish**, approve the transaction and wait for its confirmed hash.
+5. In Core select the disposable account and a custom network with RPC `http://127.0.0.1:8545`, chain ID `43113`, currency `AVAX`. Check the endpoint in the wallet. If the wallet routes this ID to Fuji, the local snapshot check must fail. Select **Check wallet**, then **Publish**, approve the transaction and wait for its confirmed hash. If confirmation times out or the wallet account or network changes after submission, keep the displayed transaction hash, ensure the local network is selected and select **Check receipt** rather than submitting again.
 6. In a clean browser profile open Lookup. Paste the fixture address, select **Find latest**, then import the exported file. Check commitment agreement, replay the original block and scan current state. History index 0 is the first publication. Stop the node and web server using Ctrl+C. A new demo node requires new setup and configuration.
 
 ## Automated reproduction

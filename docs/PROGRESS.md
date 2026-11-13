@@ -241,3 +241,23 @@ The Scan and Lookup pages now use bounded server reads and the M3 canonical body
 | Demo setup syntax | WSL Bash syntax and Foundry keystore options checked. Actual interactive deployer keystore and Core wallet setup remain manual. |
 
 Early Edge runs timed out. Final browser checks used pinned Playwright with its matching Chromium binary and a test-only provider. Hosted Actions and a real wallet extension have not been exercised for this branch. Both existing CI jobs use checkout v7; browser acceptance runs in the existing contracts-and-integration job after Forge artifacts are built.
+
+## M5 PR #6 review fixes — implemented on f3f91d2
+
+- **Receipt recovery (P2)**: extracted pure receipt classification and submission/network-validated receipt checks into `apps/web/lib/receipt.ts`, and updated `apps/web/app/publish.tsx` so submitted hashes remain visible as selectable text and lock `Publish` / `Check wallet` while pending, survive post-hash `accountsChanged` / `chainChanged` events, and recover via a single-flight read-only **Check receipt** action bound to the original registry, codehash, attester, snapshot and `reportHash`. Reverted or unverified receipts are shown explicitly without auto-resubmitting; retrying a reverted receipt requires a deliberate re-check of the wallet.
+- **Lookup import race (P3)**: updated `apps/web/app/inspection.tsx` to track pending file imports and active comparisons separately, display an importing state, disable and guard **Replay original block** and **Scan current state** while a file is loading, supersede older file reads and invalidate outstanding comparisons on new imports, and preserve size, schema, hash and summary checks plus recovery after malformed JSON.
+- **Demo notes and regressions**: added recovery guidance to [M5_DEMO.md](M5_DEMO.md) and expanded `apps/web/test/publication.test.ts` and `apps/web/test/browser.mjs` with deterministic tests for receipt recovery, `on`/`removeListener` wallet events, wrong-network and same-chain-ID snapshot mismatch guards, pre-hash rejections, reverted and event-mismatched receipts, delayed `File.text()` reads, reverse-order file selection, held current-state comparisons, and recovery after malformed JSON.
+
+| Local command (Windows + Ubuntu WSL, 2026-11-13) | Observed result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Passed with lockfile up to date across 3 workspace projects. |
+| `pnpm typecheck` | Exited 0 (`tsc --noEmit` across workspace). |
+| `pnpm lint` | Exited 0 (`eslint .`, zero warnings/errors). |
+| `pnpm test` | 5 test files, 113 unit tests passed (including 6 tests in `apps/web/test/publication.test.ts`). |
+| `forge fmt --check`, `forge build --build-info`, `forge test -vv` (`packages/contracts`) | Passed (3 suites, 16 Solidity tests passed; existing GoldenFixtures lint warnings unchanged). |
+| `pnpm test:integration` | Passed (13 Anvil integration tests passed via WSL). |
+| `pnpm build` | Exited 0 (Next.js 16.4.6 production build for `/` and `/lookup`). |
+| `pnpm test:browser` | Passed (ephemeral Anvil + Chromium suite: `publishes an analyzer snapshot and verifies the body against its retrieved commitment`, 1 passed / 12 filtered-skipped, exercising M5 end-to-end flow, receipt recovery, wallet events, reverted/unverified receipts, and import races). |
+
+- **Hosted CI vs local state**: GitHub Actions run `43294543183` on pushed PR #6 commit `f3f91d2` passed `workspace-checks` and `contracts-and-integration`. The follow-up M5 review fixes are uncommitted in the local working tree and have not yet run on hosted CI.
+- **Remaining manual checks**: interactive Core wallet smoke test on local Anvil (publish once, switch account/network during confirmation, recover the same transaction with **Check receipt**, export canonical JSON and verify in a fresh Lookup session), pushing follow-up commits for hosted CI, and maintainer review/merge.

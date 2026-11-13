@@ -1,30 +1,72 @@
-import { useRef, useState } from "react";
+"use client";
+import { useEffect, useRef, useState } from "react";
 import { verifyCommitment, type ReportBody } from "@avaguard/analyzer";
 import { agrees, differences } from "../lib/publication";
 import { lookup, replay, scan } from "./actions";
 import { Coverage } from "./report";
+
 type Item = NonNullable<
   Extract<Awaited<ReturnType<typeof lookup>>, { ok: true }>["data"]
 >;
+
 export function Inspection({ item }: { item: Item }) {
   const { report } = item;
-  const [body, setBody] = useState<ReportBody>(),
-    [status, setStatus] = useState("Report body unavailable.");
+  const [trackedHash, setTrackedHash] = useState(report.reportHash);
+  const [body, setBody] = useState<ReportBody>();
+  const [status, setStatus] = useState("Report body unavailable.");
   const [detail, setDetail] = useState("");
-  const version = useRef(0);
+  const [importing, setImporting] = useState(false);
+  const [comparing, setComparing] = useState(false);
+  const versions = useRef({ importId: 0, compareId: 0 });
+
+  if (trackedHash !== report.reportHash) {
+    setTrackedHash(report.reportHash);
+    setBody(undefined);
+    setStatus("Report body unavailable.");
+    setDetail("");
+    setImporting(false);
+    setComparing(false);
+  }
+
+  useEffect(() => {
+    const current = versions.current;
+    return () => {
+      current.importId++;
+      current.compareId++;
+    };
+  }, [report.reportHash]);
+
   async function load(file?: File) {
-    const id = ++version.current;
+    const id = ++versions.current.importId;
+    versions.current.compareId++;
+    setComparing(false);
     setBody(undefined);
     setDetail("");
-    setStatus("Report body unavailable.");
-    if (!file) return;
+    if (!file) {
+      setImporting(false);
+      setStatus("Report body unavailable.");
+      return;
+    }
     if (file.size > 900000) {
+      setImporting(false);
       setStatus("File exceeds the import limit.");
       return;
     }
+    setImporting(true);
+    setStatus("Importing report body…");
+    let text: string;
     try {
-      const result = verifyCommitment(await file.text(), report.reportHash);
-      if (version.current !== id) return;
+      text = await file.text();
+    } catch {
+      if (versions.current.importId === id) {
+        setStatus("File could not be read. Choose another file.");
+        setImporting(false);
+      }
+      return;
+    }
+    if (versions.current.importId !== id) return;
+    try {
+      const result = verifyCommitment(text, report.reportHash);
       if (result.status !== "commitment-matches") {
         setStatus("Hash mismatch.");
         return;
@@ -36,16 +78,22 @@ export function Inspection({ item }: { item: Item }) {
       setBody(result.body);
       setStatus("Commitment matches. Hash and registry summary fields agree.");
     } catch (e) {
-      if (version.current === id)
+      if (versions.current.importId === id)
         setStatus(
           e instanceof SyntaxError
             ? "Malformed JSON. Choose another file."
             : "Invalid report schema. Choose another file.",
         );
+    } finally {
+      if (versions.current.importId === id) setImporting(false);
     }
   }
+
   async function compare(original: boolean) {
-    const id = ++version.current;
+    if (importing || comparing || (original && !body)) return;
+    const id = ++versions.current.compareId;
+    const expectedImportId = versions.current.importId;
+    setComparing(true);
     setDetail("Reading…");
     try {
       let message: string;
@@ -81,11 +129,26 @@ export function Inspection({ item }: { item: Item }) {
               : "No semantic changes.");
         }
       }
-      if (version.current === id) setDetail(message);
+      if (
+        versions.current.compareId === id &&
+        versions.current.importId === expectedImportId
+      )
+        setDetail(message);
     } catch {
-      if (version.current === id) setDetail("Read unavailable. Try again.");
+      if (
+        versions.current.compareId === id &&
+        versions.current.importId === expectedImportId
+      )
+        setDetail("Read unavailable. Try again.");
+    } finally {
+      if (
+        versions.current.compareId === id &&
+        versions.current.importId === expectedImportId
+      )
+        setComparing(false);
     }
   }
+
   return (
     <>
       <p>
@@ -93,10 +156,14 @@ export function Inspection({ item }: { item: Item }) {
         <br />
         Snapshot {report.blockNumber} · Attested score {report.score}
         <br />
-        {body ? "Confidence by observation: " + (body.findings.flatMap(f => f.confidence ? [f.confidence] : []).join(", ") || "Scope only") :
-          "Coverage and confidence unavailable until a matching body is imported."} Interpretation belongs to the attester.
+        {body
+          ? "Confidence by observation: " +
+            (body.findings.flatMap((f) => (f.confidence ? [f.confidence] : []))
+              .join(", ") || "Scope only")
+          : "Coverage and confidence unavailable until a matching body is imported."}{" "}
+        Interpretation belongs to the attester.
       </p>
-      {body && <Coverage coverage={body.coverage}/>}
+      {body && <Coverage coverage={body.coverage} />}
       <details>
         <summary>Commitment fields</summary>
         <pre>{JSON.stringify(report, null, 2)}</pre>
@@ -110,10 +177,20 @@ export function Inspection({ item }: { item: Item }) {
         onChange={(e) => void load(e.target.files?.[0])}
       />
       <p role="status">{status}</p>
-      <button disabled={!body} onClick={() => compare(true)}>
+      <button
+        type="button"
+        disabled={!body || importing || comparing}
+        onClick={() => void compare(true)}
+      >
         Replay original block
       </button>{" "}
-      <button onClick={() => compare(false)}>Scan current state</button>
+      <button
+        type="button"
+        disabled={importing || comparing}
+        onClick={() => void compare(false)}
+      >
+        Scan current state
+      </button>
       <pre role="status">{detail}</pre>
     </>
   );
