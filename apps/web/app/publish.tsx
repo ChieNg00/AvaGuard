@@ -68,7 +68,8 @@ export function Publish({ body }: { body: ReportBody }) {
         );
       } else if (
         current.status === "reverted" ||
-        current.status === "unverified"
+        current.status === "unverified" ||
+        current.status === "replaced"
       ) {
         setMessage("Wallet changed. Check the account and network again.");
       }
@@ -88,7 +89,8 @@ export function Publish({ body }: { body: ReportBody }) {
         );
       } else if (
         current.status === "reverted" ||
-        current.status === "unverified"
+        current.status === "unverified" ||
+        current.status === "replaced"
       ) {
         setMessage("Wallet changed. Check the account and network again.");
       }
@@ -170,6 +172,23 @@ export function Publish({ body }: { body: ReportBody }) {
         setMessage(
           "Publication not verified (receipt contains no matching ReportPublished event): " +
             outcome.hash,
+        );
+        return;
+      }
+      if (outcome.status === "replaced") {
+        const replaced: Submission = {
+          ...target,
+          status: "replaced",
+          replacementHash: outcome.replacementHash,
+        };
+        ref.submission = replaced;
+        setSubmission(replaced);
+        setMessage(
+          "Transaction replaced: original " +
+            outcome.originalHash +
+            " was superseded by " +
+            outcome.replacementHash +
+            ". Check wallet and Lookup before trying again.",
         );
         return;
       }
@@ -350,6 +369,13 @@ export function Publish({ body }: { body: ReportBody }) {
       {submission && (
         <p>
           Submitted transaction: <code>{submission.hash}</code>
+          {submission.replacementHash && (
+            <>
+              {" "}
+              · Replacement transaction:{" "}
+              <code>{submission.replacementHash}</code>
+            </>
+          )}
         </p>
       )}
       <button

@@ -259,5 +259,24 @@ Early Edge runs timed out. Final browser checks used pinned Playwright with its 
 | `pnpm build` | Exited 0 (Next.js 16.4.6 production build for `/` and `/lookup`). |
 | `pnpm test:browser` | Passed (ephemeral Anvil + Chromium suite: `publishes an analyzer snapshot and verifies the body against its retrieved commitment`, 1 passed / 12 filtered-skipped, exercising M5 end-to-end flow, receipt recovery, wallet events, reverted/unverified receipts, and import races). |
 
-- **Hosted CI vs local state**: GitHub Actions run `43294543183` on pushed PR #6 commit `f3f91d2` passed `workspace-checks` and `contracts-and-integration`. The follow-up M5 review fixes are uncommitted in the local working tree and have not yet run on hosted CI.
-- **Remaining manual checks**: interactive Core wallet smoke test on local Anvil (publish once, switch account/network during confirmation, recover the same transaction with **Check receipt**, export canonical JSON and verify in a fresh Lookup session), pushing follow-up commits for hosted CI, and maintainer review/merge.
+- **Hosted CI vs local state**: GitHub Actions run `43294543183` passed on `f3f91d2`, and the first P2/P3 review fixes above were committed in `24c1ac1`, which passed GitHub Actions run `43347475910` (`workspace-checks` and `contracts-and-integration`) on `codex/m5-local-flow`.
+
+## M5 PR #6 P2 receipt edge-case follow-up — applied on 24c1ac1
+
+- **Transaction replacement check**: updated `classifyReceipt` and `verifySubmissionReceipt` in `apps/web/lib/receipt.ts` and UI handling in `apps/web/app/publish.tsx` to compare `receipt.transactionHash` against `submission.hash` before checking revert status or `ReportPublished` logs. Whether a replacement receipt succeeded or reverted, the UI enters a dedicated `"replaced"` state showing both original and replacement hashes without concluding confirmed or reverted on the original hash, and keeps `Publish` disabled until a deliberate `Check wallet` (whose `simulateContract` rejects duplicates if the replacement already published).
+- **Mid-read `A -> B -> A` `chainChanged` guard**: updated `verifySubmissionReceipt` so any `chainChanged` between the initial network check and receipt settlement discards that receipt even if the wallet returned to network `43113` (`A`), keeping the original hash in `"pending"` status so **Check receipt** reads cleanly on stable Anvil while still preserving post-submission account changes (`accountsChanged`) via the saved `attester`.
+- **Regressions and clean workspace note**: added failing reproduction unit tests (verified failing on `24c1ac1`) and assertions in `apps/web/test/publication.test.ts` plus Chromium/Anvil regressions in `apps/web/test/browser.mjs` covering `A -> B -> A` mid-read round-trips, `viem` replacement detection for both reverted and published replacements, visible hash assertions, and `eth_sendTransaction` call counts (`1`). Running `pnpm build` normalized `apps/web/next-env.d.ts` from local `.next/dev` type paths back to `./.next/types/...` as committed in `24c1ac1`.
+
+| Local command (Windows + Ubuntu WSL, 2026-11-13) | Observed result |
+| --- | --- |
+| `pnpm typecheck` | Exited 0 (`tsc --noEmit` across workspace). |
+| `pnpm lint` | Exited 0 (`eslint .`, zero warnings/errors). |
+| `pnpm test` | 5 test files, 115 unit tests passed (including 8 tests in `apps/web/test/publication.test.ts`). |
+| `pnpm build` | Exited 0 (Next.js 16.4.6 production build for `/` and `/lookup`). |
+| `forge fmt --check`, `forge build --build-info`, `forge test -vv` (`packages/contracts`) | Exited 0 (3 suites, 16 Solidity tests passed; existing GoldenFixtures lint warnings unchanged). |
+| `pnpm test:integration` | Exited 0 (13 Anvil integration tests passed via WSL). |
+| `pnpm test:browser` | Exited 0 (`publishes an analyzer snapshot and verifies the body against its retrieved commitment`: 1 passed / 12 filtered-skipped, exercising full M5 flow, account-change control, `A -> B -> A` mid-read discard & recovery, and `viem` reverted/published replacement receipts). |
+| `git diff --check` | Exited 0. |
+
+- **Hosted CI vs local state (follow-up)**: GitHub Actions run `43347475910` (`workspace-checks` and `contracts-and-integration`) passed on commit `24c1ac1`. The follow-up P2 receipt edge-case edits above are uncommitted in the local working tree and have not yet run on hosted CI.
+- **Remaining manual checks**: interactive Core wallet smoke test on local Anvil (publish once, switch account/network during confirmation, return to Anvil `43113`, recover with **Check receipt**, export canonical JSON and verify/replay in a fresh Lookup session), pushing follow-up commits and verifying final PR SHA checks before merging PR #6, then starting M6 (offline template explainer without API key first, followed by AI fallback tests).

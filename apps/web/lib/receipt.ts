@@ -14,10 +14,12 @@ export type SubmissionStatus =
   | "pending"
   | "confirmed"
   | "reverted"
-  | "unverified";
+  | "unverified"
+  | "replaced";
 
 export type Submission = {
   hash: Hex;
+  replacementHash?: Hex;
   registry: Address;
   registryCodehash: Hex;
   attester: Address;
@@ -43,6 +45,7 @@ export type ReceiptOutcome =
   | { status: "confirmed"; hash: Hex }
   | { status: "reverted"; hash: Hex }
   | { status: "unverified"; hash: Hex }
+  | { status: "replaced"; originalHash: Hex; replacementHash: Hex }
   | { status: "pending" | "timeout"; message: string }
   | NetworkFailureOutcome;
 
@@ -71,9 +74,21 @@ export function classifyReceipt(
   receipt: ReceiptLike,
   submission: Pick<
     Submission,
-    "registry" | "target" | "reportHash" | "attester"
+    "hash" | "registry" | "target" | "reportHash" | "attester"
   >,
-): Extract<ReceiptOutcome, { status: "confirmed" | "reverted" | "unverified" }> {
+): Extract<
+  ReceiptOutcome,
+  { status: "confirmed" | "reverted" | "unverified" | "replaced" }
+> {
+  if (
+    !receipt.transactionHash ||
+    receipt.transactionHash.toLowerCase() !== submission.hash.toLowerCase()
+  )
+    return {
+      status: "replaced",
+      originalHash: submission.hash,
+      replacementHash: receipt.transactionHash,
+    };
   if (receipt.status !== "success")
     return { status: "reverted", hash: receipt.transactionHash };
   const published = parseEventLogs({
@@ -171,9 +186,39 @@ export async function verifySubmissionReceipt({
         ? signal.reason
         : new DOMException("Aborted", "AbortError");
   };
+  const chainBefore = getChainRevision?.();
+  async function handleMidReadChainChange(): Promise<ReceiptOutcome> {
+    try {
+      const currentNetwork = await verifySubmissionNetwork(
+        reader,
+        checkContext,
+        submission,
+      );
+      throwIfAborted();
+      if (!currentNetwork.ok) return currentNetwork.outcome;
+      return {
+        status: "pending",
+        message:
+          "Wallet network changed while reading the receipt. Use Check receipt to verify the original submission on local Anvil (43113).",
+      };
+    } catch (err) {
+      if (
+        signal?.aborted ||
+        (typeof err === "object" &&
+          err !== null &&
+          "name" in err &&
+          err.name === "AbortError")
+      )
+        throw err;
+      return {
+        status: "unavailable",
+        message:
+          "Receipt unavailable. Use Check receipt to verify the submitted transaction.",
+      };
+    }
+  }
   try {
     throwIfAborted();
-    const chainBefore = getChainRevision?.();
     const initialNetwork = await verifySubmissionNetwork(
       reader,
       checkContext,
@@ -190,15 +235,8 @@ export async function verifySubmissionReceipt({
         })
       : await reader.getTransactionReceipt({ hash: submission.hash });
     throwIfAborted();
-    if (getChainRevision && getChainRevision() !== chainBefore) {
-      const currentNetwork = await verifySubmissionNetwork(
-        reader,
-        checkContext,
-        submission,
-      );
-      throwIfAborted();
-      if (!currentNetwork.ok) return currentNetwork.outcome;
-    }
+    if (getChainRevision && getChainRevision() !== chainBefore)
+      return await handleMidReadChainChange();
     return classifyReceipt(receipt, submission);
   } catch (e) {
     if (
@@ -206,6 +244,12 @@ export async function verifySubmissionReceipt({
       (typeof e === "object" && e !== null && "name" in e && e.name === "AbortError")
     )
       throw e;
+    if (
+      getChainRevision &&
+      chainBefore !== undefined &&
+      getChainRevision() !== chainBefore
+    )
+      return await handleMidReadChainChange();
     if (e instanceof TransactionReceiptNotFoundError)
       return {
         status: "pending",

@@ -431,3 +431,111 @@ it("rethrows AbortError when cancelled by report change or unmount", async () =>
   controller.abort();
   await expect(pending).rejects.toMatchObject({ name: "AbortError" });
 });
+
+it("does not classify a replacement transaction receipt as confirming or reverting the original hash", async () => {
+  const submission = makeSubmission();
+  const replacementHash = ("0x" + "b".repeat(64)) as Hex;
+
+  expect(
+    classifyReceipt(
+      {
+        status: "success",
+        transactionHash: ("0x" + txHash.slice(2).toUpperCase()) as Hex,
+        logs: [makePublishedLog()],
+      },
+      submission,
+    ),
+  ).toEqual({
+    status: "confirmed",
+    hash: ("0x" + txHash.slice(2).toUpperCase()) as Hex,
+  });
+
+  expect(
+    classifyReceipt(
+      {
+        status: "reverted",
+        transactionHash: replacementHash,
+        logs: [],
+      },
+      submission,
+    ),
+  ).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash,
+  });
+
+  const replacedSuccess = await verifySubmissionReceipt({
+    reader: makeReader({
+      async waitForTransactionReceipt() {
+        return {
+          status: "success",
+          transactionHash: replacementHash,
+          logs: [makePublishedLog()],
+        };
+      },
+    }),
+    checkContext: okContext,
+    submission,
+    wait: true,
+  });
+  expect(replacedSuccess).toEqual({
+    status: "replaced",
+    originalHash: txHash,
+    replacementHash,
+  });
+});
+
+it("discards a receipt read during an A -> B -> A chainChanged round-trip and recovers on A", async () => {
+  const submission = makeSubmission();
+  let chainRev = 1;
+  let currentChainId = 43113;
+  let resolveReceipt!: (value: ReceiptLike) => void;
+
+  const firstAttempt = verifySubmissionReceipt({
+    reader: makeReader({
+      async getChainId() {
+        return currentChainId;
+      },
+      getTransactionReceipt() {
+        return new Promise((resolve) => {
+          resolveReceipt = resolve;
+        });
+      },
+    }),
+    checkContext: okContext,
+    submission,
+    wait: false,
+    getChainRevision: () => chainRev,
+  });
+
+  await vi.waitFor(() => expect(resolveReceipt).toBeDefined());
+  // Switch A -> B while receipt read is in flight, then switch back B -> A before resolving.
+  chainRev = 2;
+  currentChainId = 1;
+  const receiptReadOnB: ReceiptLike = {
+    status: "reverted",
+    transactionHash: txHash,
+    logs: [],
+  };
+  chainRev = 3;
+  currentChainId = 43113;
+  resolveReceipt(receiptReadOnB);
+
+  const firstOutcome = await firstAttempt;
+  expect(firstOutcome.status).toBe("pending");
+  expect(firstOutcome).toMatchObject({
+    status: "pending",
+    message: expect.stringMatching(/Wallet network changed while reading/),
+  });
+
+  // Re-reading steadily on A confirms the original submission.
+  const retryOutcome = await verifySubmissionReceipt({
+    reader: makeReader(),
+    checkContext: okContext,
+    submission,
+    wait: false,
+    getChainRevision: () => chainRev,
+  });
+  expect(retryOutcome).toEqual({ status: "confirmed", hash: txHash });
+});

@@ -84,8 +84,10 @@ async function installProvider(targetPage, initialAccount) {
   );
   await targetPage.evaluate((account) => {
     const listeners = new Map();
+    const replacedMap = new Map();
     let sendGate = null;
     let receiptGate = null;
+    let receiptResultOverride = null;
     window.walletState = {
       mode: "wrong",
       receiptMode: "ok",
@@ -96,6 +98,7 @@ async function installProvider(targetPage, initialAccount) {
       receiptPending: false,
       holdReceipt: false,
       lastTxHash: null,
+      lastReplacementHash: null,
     };
     window.emitWallet = (event, data) => {
       for (const fn of [...(listeners.get(event) ?? [])]) fn(data);
@@ -105,7 +108,8 @@ async function installProvider(targetPage, initialAccount) {
       sendGate?.();
       sendGate = null;
     };
-    window.releaseReceipt = () => {
+    window.releaseReceipt = (override = null) => {
+      receiptResultOverride = override;
       receiptGate?.();
       receiptGate = null;
     };
@@ -136,7 +140,7 @@ async function installProvider(targetPage, initialAccount) {
           }
           s.sendCount++;
           let nextCall = call;
-          if (s.mode === "reverted") {
+          if (s.mode === "reverted" || s.mode === "replaced-reverted") {
             nextCall = {
               ...call,
               params: [
@@ -160,9 +164,35 @@ async function installProvider(targetPage, initialAccount) {
               ],
             };
           }
-          const hash = await window.testRpc(nextCall);
-          s.lastTxHash = hash;
-          return hash;
+          const realHash = await window.testRpc(nextCall);
+          if (
+            s.mode === "replaced-reverted" ||
+            s.mode === "replaced-success"
+          ) {
+            const realTx = await window.testRpc({
+              method: "eth_getTransactionByHash",
+              params: [realHash],
+            });
+            const origHash =
+              realHash.slice(0, -1) + (realHash.endsWith("0") ? "1" : "0");
+            replacedMap.set(origHash.toLowerCase(), {
+              ...realTx,
+              hash: origHash,
+              blockNumber: null,
+              blockHash: null,
+              transactionIndex: null,
+            });
+            s.lastTxHash = origHash;
+            s.lastReplacementHash = realHash;
+            return origHash;
+          }
+          s.lastTxHash = realHash;
+          s.lastReplacementHash = null;
+          return realHash;
+        }
+        if (call.method === "eth_getTransactionByHash") {
+          const pending = replacedMap.get(String(call.params[0]).toLowerCase());
+          if (pending) return pending;
         }
         if (call.method === "eth_getTransactionReceipt") {
           if (s.holdReceipt) {
@@ -172,6 +202,11 @@ async function installProvider(targetPage, initialAccount) {
             });
             s.receiptPending = false;
             s.holdReceipt = false;
+          }
+          if (receiptResultOverride) {
+            const nextOverride = receiptResultOverride;
+            receiptResultOverride = null;
+            return nextOverride;
           }
           if (s.receiptMode === "unavailable")
             throw Object.assign(Error("Receipt RPC unavailable"), {
@@ -568,17 +603,145 @@ try {
     1,
   );
 
+  // Mid-read chainChanged round-trip A -> B -> A must discard the receipt read during B.
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "ok";
+    window.walletState.receiptMode = "ok";
+    window.walletState.holdReceipt = true;
+    window.emitWallet("chainChanged", "0xa869");
+  });
+  await checkReceiptBtn.click();
+  await recoveryPage.waitForFunction(
+    () => window.walletState.receiptPending === true,
+  );
+  await recoveryPage.evaluate((hash) => {
+    window.emitWallet("chainChanged", "0x1");
+    window.emitWallet("chainChanged", "0xa869");
+    window.releaseReceipt({
+      status: "0x0",
+      transactionHash: hash,
+      logs: [],
+    });
+  }, txHash);
+  await recoveryPage.getByText(/Wallet network changed while reading/).waitFor();
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  assert.equal(
+    await recoveryPage.getByText(/Publication reverted:/).count(),
+    0,
+  );
+  await hashCode.waitFor();
+  assert.equal(await hashCode.innerText(), txHash);
+  assert(await publishBtn.isDisabled());
+  assert(await checkWalletBtn.isDisabled());
+  assert(!(await checkReceiptBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
   // Restore local Anvil network (keeping changedAccount active!) and recover with original attester.
   await recoveryPage.evaluate(() => {
     window.walletState.mode = "ok";
     window.walletState.receiptMode = "ok";
-    window.emitWallet("chainChanged", "0xa869");
   });
   await checkReceiptBtn.click();
   await recoveryPage.getByText("Confirmed publication: " + txHash).waitFor();
   await hashCode.waitFor();
+  assert.equal(await hashCode.innerText(), txHash);
   assert(await publishBtn.isDisabled());
   assert(await checkWalletBtn.isDisabled());
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Replacement transaction B (reverted) via viem must show both hashes and never mark A confirmed or reverted.
+  await anvilRpc("evm_mine", []);
+  const replacedRevertedBlock = parseInt(
+    await anvilRpc("eth_blockNumber", []),
+    16,
+  );
+  await recoveryPage.evaluate((origAcc) => {
+    window.walletState.activeAccount = origAcc;
+    window.walletState.mode = "ok";
+    window.walletState.sendCount = 0;
+  }, attester);
+  await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
+  await recoveryPage.getByText("Block " + replacedRevertedBlock).waitFor();
+  await check(recoveryPage, "ok", /Authorized local attester/);
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "replaced-reverted";
+  });
+  await publishBtn.click();
+  await recoveryPage.getByText(/Transaction replaced/).waitFor();
+  const { origReverted, repReverted } = await recoveryPage.evaluate(() => ({
+    origReverted: window.walletState.lastTxHash,
+    repReverted: window.walletState.lastReplacementHash,
+  }));
+  await recoveryPage
+    .locator("article code", { hasText: origReverted })
+    .waitFor();
+  await recoveryPage
+    .locator("article code", { hasText: repReverted })
+    .waitFor();
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  assert.equal(
+    await recoveryPage.getByText(/Publication reverted:/).count(),
+    0,
+  );
+  assert(await publishBtn.isDisabled());
+  assert.equal(await checkReceiptBtn.count(), 0);
+  assert(!(await checkWalletBtn.isDisabled()));
+  assert.equal(
+    await recoveryPage.evaluate(() => window.walletState.sendCount),
+    1,
+  );
+
+  // Replacement transaction B (success with ReportPublished) must also stay in replaced state and block duplicate send.
+  await anvilRpc("evm_mine", []);
+  const replacedSuccessBlock = parseInt(
+    await anvilRpc("eth_blockNumber", []),
+    16,
+  );
+  await recoveryPage.evaluate(() => {
+    window.walletState.mode = "ok";
+  });
+  await recoveryPage.getByRole("button", { name: "Scan contract" }).click();
+  await recoveryPage.getByText("Block " + replacedSuccessBlock).waitFor();
+  await check(recoveryPage, "ok", /Authorized local attester/);
+  await recoveryPage.evaluate(() => {
+    window.walletState.sendCount = 0;
+    window.walletState.mode = "replaced-success";
+  });
+  await publishBtn.click();
+  await recoveryPage.getByText(/Transaction replaced/).waitFor();
+  const { origSuccess, repSuccess } = await recoveryPage.evaluate(() => ({
+    origSuccess: window.walletState.lastTxHash,
+    repSuccess: window.walletState.lastReplacementHash,
+  }));
+  await recoveryPage
+    .locator("article code", { hasText: origSuccess })
+    .waitFor();
+  await recoveryPage
+    .locator("article code", { hasText: repSuccess })
+    .waitFor();
+  assert.equal(
+    await recoveryPage.getByText(/Confirmed publication:/).count(),
+    0,
+  );
+  assert.equal(
+    await recoveryPage.getByText(/Publication reverted:/).count(),
+    0,
+  );
+  assert(await publishBtn.isDisabled());
+  await check(recoveryPage, "ok", /Publication simulation failed/);
+  assert(await publishBtn.isDisabled());
   assert.equal(
     await recoveryPage.evaluate(() => window.walletState.sendCount),
     1,
@@ -643,7 +806,7 @@ try {
   assert(await publishBtn.isDisabled());
 
   console.log(
-    "Browser passed: score 35, export, network/snapshot/rejection guards, confirmed receipt, receipt recovery, wallet events, reverted/unverified receipts, clean lookup, import races, replay, current state and pruned history.",
+    "Browser passed: score 35, export, network/snapshot/rejection guards, confirmed receipt, receipt recovery, wallet events, mid-read chain round-trip, reverted/unverified/replaced receipts, clean lookup, import races, replay, current state and pruned history.",
   );
 } catch (error) {
   console.error((await activePage?.locator("body").innerText())?.slice(-2500));
