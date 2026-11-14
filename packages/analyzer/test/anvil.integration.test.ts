@@ -189,6 +189,232 @@ for (const [i, [name, score, band, rules]] of golden.entries()) {
   }, 45000);
 }
 
+it("verifies pinned RiskRegistry compiler metadata, ABI, and runtime bytecode hash", async () => {
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    ["scripts/verify-registry-identity.mjs"],
+    { timeout: 10000 },
+  );
+  expect(stdout).toContain("solc=0.8.30+commit.73712a01");
+  expect(stdout).toContain("evm=cancun");
+  expect(stdout).toContain("0x4fae2a424c444bfdc1c89924898d33a63b25b30a5ece9ed3bb4c1fbe96397b38");
+});
+
+it("deploys demo contracts via transactions, verifies token behavior, scans, publishes, and replays at original block", async () => {
+  const demoOwner = toHex(7600, { size: 20 });
+  const demoAttester = toHex(7601, { size: 20 });
+  const demoHolder = toHex(7602, { size: 20 });
+  const recipient = toHex(7603, { size: 20 });
+  const initialSupply = 1_000_000n * 10n ** 18n;
+
+  for (const account of [demoOwner, demoAttester, demoHolder]) {
+    await rpc("anvil_impersonateAccount", [account]);
+    await rpc("anvil_setBalance", [account, toHex(10n ** 19n)]);
+  }
+
+  async function sendTx(from: Hex, data: Hex, to?: Hex) {
+    const hash = await rpc("eth_sendTransaction", [{ from, to, data, gas: toHex(5_000_000) }]);
+    let receipt = await rpc("eth_getTransactionReceipt", [hash]);
+    for (let attempt = 0; !receipt && attempt < 40; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      receipt = await rpc("eth_getTransactionReceipt", [hash]);
+    }
+    if (!receipt) throw new Error("Demo deployment transaction timed out");
+    return receipt;
+  }
+
+  const readArtifact = async (relPath: string) =>
+    JSON.parse(await readFile(relPath, "utf8")) as {
+      abi: readonly unknown[];
+      bytecode: { object: Hex };
+    };
+
+  const [registryArtifact, baselineArtifact, mintPauseArtifact, upgradeableArtifact, proxyArtifact, decoyArtifact] =
+    await Promise.all([
+      readArtifact("packages/contracts/out/RiskRegistry.sol/RiskRegistry.json"),
+      readArtifact("packages/contracts/out/DemoTokens.sol/DemoBaselineToken.json"),
+      readArtifact("packages/contracts/out/DemoTokens.sol/DemoMintPauseToken.json"),
+      readArtifact("packages/contracts/out/DemoTokens.sol/DemoUpgradeableToken.json"),
+      readArtifact("packages/contracts/out/DemoTokens.sol/DemoTokenProxy.json"),
+      readArtifact("packages/contracts/out/GoldenFixtures.sol/DecoyConstantToken.json"),
+    ]);
+
+  const registryDeploy = await sendTx(
+    demoOwner,
+    encodeDeployData({ abi: registryArtifact.abi, bytecode: registryArtifact.bytecode.object, args: [demoOwner] }),
+  );
+  expect(registryDeploy.status).toBe("0x1");
+  const demoRegistry = registryDeploy.contractAddress as Hex;
+
+  const grantReceipt = await sendTx(
+    demoOwner,
+    encodeFunctionData({ abi: registryArtifact.abi, functionName: "setAttester", args: [demoAttester, true] }),
+    demoRegistry,
+  );
+  expect(grantReceipt.status).toBe("0x1");
+
+  const baselineDeploy = await sendTx(
+    demoOwner,
+    encodeDeployData({
+      abi: baselineArtifact.abi,
+      bytecode: baselineArtifact.bytecode.object,
+      args: ["AvaGuard Demo Baseline", "AGBASE", demoHolder, initialSupply],
+    }),
+  );
+  expect(baselineDeploy.status).toBe("0x1");
+  const baselineAddress = baselineDeploy.contractAddress as Hex;
+
+  const mintPauseDeploy = await sendTx(
+    demoOwner,
+    encodeDeployData({
+      abi: mintPauseArtifact.abi,
+      bytecode: mintPauseArtifact.bytecode.object,
+      args: ["AvaGuard Demo MintPause", "AGMP", demoOwner, demoHolder, initialSupply],
+    }),
+  );
+  expect(mintPauseDeploy.status).toBe("0x1");
+  const mintPauseAddress = mintPauseDeploy.contractAddress as Hex;
+
+  const implDeploy = await sendTx(
+    demoOwner,
+    encodeDeployData({ abi: upgradeableArtifact.abi, bytecode: upgradeableArtifact.bytecode.object, args: [] }),
+  );
+  expect(implDeploy.status).toBe("0x1");
+  const implAddress = implDeploy.contractAddress as Hex;
+
+  const initCalldata = encodeFunctionData({
+    abi: upgradeableArtifact.abi,
+    functionName: "initialize",
+    args: ["AvaGuard Demo Upgradeable", "AGUP", demoOwner, demoHolder, initialSupply],
+  });
+  const proxyDeploy = await sendTx(
+    demoOwner,
+    encodeDeployData({ abi: proxyArtifact.abi, bytecode: proxyArtifact.bytecode.object, args: [implAddress, initCalldata] }),
+  );
+  expect(proxyDeploy.status).toBe("0x1");
+  const proxyAddress = proxyDeploy.contractAddress as Hex;
+
+  const decoyDeploy = await sendTx(
+    demoOwner,
+    encodeDeployData({ abi: decoyArtifact.abi, bytecode: decoyArtifact.bytecode.object, args: [] }),
+  );
+  expect(decoyDeploy.status).toBe("0x1");
+  const decoyAddress = decoyDeploy.contractAddress as Hex;
+
+  const transport = createHttpTransport(endpoint);
+
+  // Exercise real token behavior on deployed contracts before scanning.
+  const baselineTransfer = await sendTx(
+    demoHolder,
+    encodeFunctionData({ abi: baselineArtifact.abi, functionName: "transfer", args: [recipient, 100n * 10n ** 18n] }),
+    baselineAddress,
+  );
+  expect(baselineTransfer.status).toBe("0x1");
+
+  const pauseTx = await sendTx(
+    demoOwner,
+    encodeFunctionData({ abi: mintPauseArtifact.abi, functionName: "pause", args: [] }),
+    mintPauseAddress,
+  );
+  expect(pauseTx.status).toBe("0x1");
+  const blockedTransfer = await sendTx(
+    demoHolder,
+    encodeFunctionData({ abi: mintPauseArtifact.abi, functionName: "transfer", args: [recipient, 1n] }),
+    mintPauseAddress,
+  );
+  expect(blockedTransfer.status).toBe("0x0");
+  const unpauseTx = await sendTx(
+    demoOwner,
+    encodeFunctionData({ abi: mintPauseArtifact.abi, functionName: "unpause", args: [] }),
+    mintPauseAddress,
+  );
+  expect(unpauseTx.status).toBe("0x1");
+
+  const proxyTransfer = await sendTx(
+    demoHolder,
+    encodeFunctionData({ abi: upgradeableArtifact.abi, functionName: "transfer", args: [recipient, 50n * 10n ** 18n] }),
+    proxyAddress,
+  );
+  expect(proxyTransfer.status).toBe("0x1");
+
+  const [baselineReport, mintPauseReport, proxyReport, decoyReport] = await Promise.all([
+    buildReport(await collectEvidence(transport, { address: baselineAddress })),
+    buildReport(await collectEvidence(transport, { address: mintPauseAddress })),
+    buildReport(await collectEvidence(transport, { address: proxyAddress })),
+    buildReport(await collectEvidence(transport, { address: decoyAddress })),
+  ]);
+
+  expect(baselineReport.status).toBe("complete");
+  expect(mintPauseReport.status).toBe("complete");
+  expect(proxyReport.status).toBe("complete");
+  expect(decoyReport.status).toBe("complete");
+
+  if (
+    baselineReport.status !== "complete" ||
+    mintPauseReport.status !== "complete" ||
+    proxyReport.status !== "complete" ||
+    decoyReport.status !== "complete"
+  ) {
+    throw new Error("Expected complete reports for all deployed demo contracts");
+  }
+
+  expect(baselineReport.body.signalScore).toBe(0);
+  expect(baselineReport.band).toBe("Few signals");
+  expect(baselineReport.body.findings.map((f) => f.id)).toEqual(["R-SOURCE-UNKNOWN"]);
+
+  expect(mintPauseReport.body.signalScore).toBe(45);
+  expect(mintPauseReport.band).toBe("Some signals");
+  expect(mintPauseReport.body.findings.map((f) => f.id)).toEqual([
+    "R-MINT",
+    "R-OWNER-EOA",
+    "R-PAUSE",
+    "R-SOURCE-UNKNOWN",
+  ]);
+
+  expect(proxyReport.body.signalScore).toBe(60);
+  expect(proxyReport.band).toBe("Many signals");
+  expect(proxyReport.body.proxy.kind).toBe("erc1967");
+  expect(proxyReport.body.proxy.implementation).toBe(implAddress.toLowerCase());
+  expect(proxyReport.body.findings.map((f) => f.id)).toEqual([
+    "R-MINT",
+    "R-OWNER-EOA",
+    "R-PROXY",
+    "R-SOURCE-UNKNOWN",
+  ]);
+
+  expect(decoyReport.body.signalScore).toBe(0);
+  expect(decoyReport.band).toBe("Few signals");
+  expect(decoyReport.body.findings.map((f) => f.id)).toEqual(["R-SOURCE-UNKNOWN"]);
+
+  // Publish DemoMintPauseToken and DemoTokenProxy reports, verify commitments, and replay at original blocks after mining.
+  for (const report of [mintPauseReport, proxyReport]) {
+    const { body } = report;
+    const pub = {
+      target: body.address,
+      score: body.signalScore,
+      codehash: body.codehash,
+      implementation: body.proxy.implementation ?? zeroAddress,
+      reportHash: report.reportHash,
+      rulesetVersion: body.rulesetVersion,
+      blockNumber: BigInt(body.blockNumber),
+      blockHash: body.blockHash,
+    };
+    const pubReceipt = await sendTx(
+      demoAttester,
+      encodeFunctionData({ abi: registryArtifact.abi, functionName: "publish", args: [pub] }),
+      demoRegistry,
+    );
+    expect(pubReceipt.status).toBe("0x1");
+
+    const canonical = canonicalReportJson(body);
+    expect(verifyCommitment(canonical, report.reportHash).status).toBe("commitment-matches");
+
+    await rpc("evm_mine", []);
+    const replayed = await replayReport(transport, body, report.reportHash);
+    expect(replayed.status).toBe("replay-matches");
+  }
+}, 180000);
+
 it("publishes an analyzer snapshot and verifies the body against its retrieved commitment", async () => {
   const vector = await readFile("fixtures/canonical-report-v1.json", "utf8");
   const vectorHash = "0x9c8945f6c116ecd46025d73b24a000490919db79635485ef2c3da9e1bbcba5cd";

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   createPublicClient,
   createWalletClient,
@@ -15,34 +15,80 @@ import type { ReportBody } from "@avaguard/analyzer";
 import { registryAbi as abi } from "../lib/registry-abi";
 import { publication } from "../lib/publication";
 import {
+  checkPublicationOrigin,
+  type PublicPublicationConfig,
+} from "../lib/publication-config";
+import {
   validateSubmittedTransaction,
   verifySubmissionReceipt,
   type Submission,
 } from "../lib/receipt";
 import { walletContext } from "./actions";
 
-const INITIAL_MESSAGE =
-  "Connect the disposable attester wallet to check permission.";
+function initialPublicationMessage(config: PublicPublicationConfig): string {
+  if (!config.enabled) return config.reason;
+  const walletKind =
+    config.mode === "local" ? "disposable attester wallet" : "attester wallet";
+  return `Connect the ${walletKind} on ${config.networkLabel} to check permission.`;
+}
+
+function isUnrecognizedChainError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const candidate = err as { code?: unknown; data?: { originalError?: { code?: unknown } } };
+  return (
+    candidate.code === 4902 || candidate.data?.originalError?.code === 4902
+  );
+}
 
 function injected() {
   return (window as Window & { ethereum?: EIP1193Provider }).ethereum;
 }
 
-export function Publish({ body }: { body: ReportBody }) {
+function subscribeNoop() {
+  return () => {};
+}
+
+function getLocationOrigin(): string {
+  return window.location.origin;
+}
+
+function getServerOrigin(): string {
+  return "";
+}
+
+export function Publish({
+  body,
+  publicationConfig,
+}: {
+  body: ReportBody;
+  publicationConfig: PublicPublicationConfig;
+}) {
   const expected = publication(body);
   const reportKey = `${body.blockHash}:${body.address}:${expected.reportHash}`;
+  const initialMsg = initialPublicationMessage(publicationConfig);
+  const clientOrigin = useSyncExternalStore(
+    subscribeNoop,
+    getLocationOrigin,
+    getServerOrigin,
+  );
+  const originCheck =
+    clientOrigin && publicationConfig.enabled
+      ? checkPublicationOrigin(publicationConfig, new URL(clientOrigin))
+      : ({ ok: true } as const);
   const [trackedKey, setTrackedKey] = useState(reportKey);
   const [ready, setReady] = useState<Address>();
   const [busy, setBusy] = useState(false);
+  const [wrongNetwork, setWrongNetwork] = useState(false);
   const [submission, setSubmission] = useState<Submission>();
-  const [message, setMessage] = useState(INITIAL_MESSAGE);
+  const [message, setMessage] = useState(initialMsg);
 
   if (trackedKey !== reportKey) {
     setTrackedKey(reportKey);
     setReady(undefined);
     setBusy(false);
+    setWrongNetwork(false);
     setSubmission(undefined);
-    setMessage(INITIAL_MESSAGE);
+    setMessage(initialMsg);
   }
 
   const state = useRef({
@@ -83,14 +129,16 @@ export function Publish({ body }: { body: ReportBody }) {
       ref.walletRevision++;
       ref.chainRevision++;
       setReady(undefined);
+      setWrongNetwork(false);
       const current = ref.submission;
       if (!current) {
         setMessage("Wallet changed. Check the account and network again.");
         return;
       }
       if (current.status === "pending" && !ref.receiptLock) {
+        const label = current.networkLabel ?? publicationConfig.networkLabel;
         setMessage(
-          "Wallet network changed. Select the original local Anvil network (43113) and use Check receipt.",
+          `Wallet network changed. Select the original ${label} and use Check receipt.`,
         );
       } else if (
         current.status === "reverted" ||
@@ -113,7 +161,7 @@ export function Publish({ body }: { body: ReportBody }) {
       provider?.removeListener("accountsChanged", onAccountsChanged);
       provider?.removeListener("chainChanged", onChainChanged);
     };
-  }, [reportKey]);
+  }, [reportKey, publicationConfig]);
 
   async function readReceiptFor(
     target: Submission,
@@ -125,17 +173,22 @@ export function Publish({ body }: { body: ReportBody }) {
     const checkId = ++ref.receiptCheckId;
     const controller = new AbortController();
     ref.abort = controller;
+    const activeLabel = target.networkLabel ?? publicationConfig.networkLabel;
     try {
-      if (!["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) {
+      const originCheck = checkPublicationOrigin(
+        publicationConfig,
+        window.location,
+      );
+      if (!originCheck.ok) {
         if (ref.reportRevision === reportToken && ref.receiptCheckId === checkId)
-          setMessage("Open AvaGuard on loopback.");
+          setMessage(originCheck.error);
         return;
       }
       const provider = injected();
       if (!provider) {
         if (ref.reportRevision === reportToken && ref.receiptCheckId === checkId)
           setMessage(
-            "No injected wallet detected. Reconnect the wallet on local Anvil (43113) and use Check receipt.",
+            `No injected wallet detected. Reconnect the wallet on ${activeLabel} and use Check receipt.`,
           );
         return;
       }
@@ -179,6 +232,7 @@ export function Publish({ body }: { body: ReportBody }) {
           ? ref.submission
           : target;
       if (outcome.status === "confirmed") {
+        setWrongNetwork(false);
         const confirmed: Submission = { ...currentTarget, status: "confirmed" };
         ref.submission = confirmed;
         setSubmission(confirmed);
@@ -226,6 +280,9 @@ export function Publish({ body }: { body: ReportBody }) {
         );
         return;
       }
+      if (outcome.status === "wrong-network") {
+        setWrongNetwork(true);
+      }
       setMessage(outcome.message);
     } catch (e) {
       if (
@@ -258,6 +315,7 @@ export function Publish({ body }: { body: ReportBody }) {
     ref.lock = true;
     setBusy(true);
     setReady(undefined);
+    setWrongNetwork(false);
     const reportToken = ref.reportRevision;
     const walletToken = ref.walletRevision;
     function ensurePreSignUnchanged() {
@@ -269,10 +327,23 @@ export function Publish({ body }: { body: ReportBody }) {
     }
     let stage = "Wallet check failed";
     try {
-      if (!["localhost", "127.0.0.1", "[::1]"].includes(location.hostname))
-        throw new Error("Open AvaGuard on loopback.");
+      if (!publicationConfig.enabled) {
+        throw new Error(publicationConfig.reason);
+      }
+      const originCheck = checkPublicationOrigin(
+        publicationConfig,
+        window.location,
+      );
+      if (!originCheck.ok) {
+        throw new Error(originCheck.error);
+      }
       const ctx = await walletContext(body.blockNumber, body.blockHash);
       if (!ctx.ok) throw new Error(ctx.error);
+      if (ctx.data.mode !== publicationConfig.mode) {
+        throw new Error(
+          "Publication environment changed. Rescan before publishing.",
+        );
+      }
       const provider = injected();
       if (!provider) throw new Error("No injected wallet detected.");
       const transport = custom(provider, { retryCount: 0 });
@@ -286,10 +357,12 @@ export function Publish({ body }: { body: ReportBody }) {
       const account = getAddress(rawAccount);
       if (write && (!ready || account !== getAddress(ready)))
         throw new Error("Wallet account changed. Check the wallet again.");
-      if ((await wallet.getChainId()) !== 43113)
+      if ((await wallet.getChainId()) !== 43113) {
+        setWrongNetwork(true);
         throw new Error(
-          "Wrong wallet network. Select the local Anvil network (43113).",
+          `Wrong wallet network. Select ${publicationConfig.networkLabel}.`,
         );
+      }
       const address = ctx.data.address;
       const [snapshot, code, allowed] = await Promise.all([
         reader.getBlock({ blockNumber: BigInt(body.blockNumber) }),
@@ -331,7 +404,9 @@ export function Publish({ body }: { body: ReportBody }) {
       ensurePreSignUnchanged();
       if (!write) {
         setReady(account);
-        setMessage("Authorized local attester: " + account);
+        const modeLabel =
+          publicationConfig.mode === "local" ? "local" : "Fuji";
+        setMessage(`Authorized ${modeLabel} attester: ${account}`);
         return;
       }
       const txInput = encodeFunctionData({
@@ -354,6 +429,8 @@ export function Publish({ body }: { body: ReportBody }) {
         registry: address,
         registryCodehash: ctx.data.codehash,
         attester: account,
+        mode: publicationConfig.mode,
+        networkLabel: publicationConfig.networkLabel,
         submittedBlock: submittedBlockBefore,
         input: txInput,
         value: 0n,
@@ -402,6 +479,91 @@ export function Publish({ body }: { body: ReportBody }) {
     }
   }
 
+  async function switchNetwork() {
+    const ref = state.current;
+    if (ref.lock || ref.receiptLock || !publicationConfig.enabled) return;
+    const originCheck = checkPublicationOrigin(
+      publicationConfig,
+      window.location,
+    );
+    if (!originCheck.ok) {
+      setMessage(originCheck.error);
+      return;
+    }
+    const provider = injected();
+    if (!provider) {
+      setMessage("No injected wallet detected.");
+      return;
+    }
+    ref.lock = true;
+    setBusy(true);
+    const reportToken = ref.reportRevision;
+    try {
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: "0xa869" }],
+      });
+      if (ref.reportRevision !== reportToken) return;
+      setWrongNetwork(false);
+      setMessage(
+        ref.submission?.status === "pending"
+          ? "Wallet switched to chain 43113. Select Check receipt to verify the submitted transaction."
+          : "Wallet switched to chain 43113. Select Check wallet to verify attester permission.",
+      );
+    } catch (e) {
+      if (ref.reportRevision !== reportToken) return;
+      if (isUnrecognizedChainError(e)) {
+        if (publicationConfig.mode === "fuji") {
+          try {
+            await provider.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: "0xa869",
+                  chainName: "Avalanche Fuji C-Chain",
+                  nativeCurrency: {
+                    name: "Avalanche",
+                    symbol: "AVAX",
+                    decimals: 18,
+                  },
+                  rpcUrls: ["https://api.avax-test.network/ext/bc/C/rpc"],
+                  blockExplorerUrls: ["https://testnet.snowscan.xyz"],
+                },
+              ],
+            });
+            if (ref.reportRevision !== reportToken) return;
+            setWrongNetwork(false);
+            setMessage(
+              ref.submission?.status === "pending"
+                ? "Avalanche Fuji (43113) added to wallet. Select Check receipt to verify the submitted transaction."
+                : "Avalanche Fuji (43113) added to wallet. Select Check wallet to verify attester permission.",
+            );
+            return;
+          } catch {
+            if (ref.reportRevision === reportToken) {
+              setMessage(
+                "Wallet declined adding Avalanche Fuji (43113). Select it manually.",
+              );
+            }
+            return;
+          }
+        }
+        setMessage(
+          "Chain 43113 is not configured in the wallet. Add local Anvil (http://127.0.0.1:8545, chain ID 43113) manually.",
+        );
+        return;
+      }
+      setMessage(
+        `Wallet did not switch networks. Select ${publicationConfig.networkLabel} manually.`,
+      );
+    } finally {
+      if (ref.reportRevision === reportToken) {
+        ref.lock = false;
+        setBusy(false);
+      }
+    }
+  }
+
   async function checkReceipt() {
     const ref = state.current;
     const target = ref.submission;
@@ -428,10 +590,13 @@ export function Publish({ body }: { body: ReportBody }) {
 
   const pending = submission?.status === "pending";
   const confirmed = submission?.status === "confirmed";
+  const disabledByConfig = !publicationConfig.enabled || !originCheck.ok;
+  const displayedMessage =
+    !originCheck.ok && !submission ? originCheck.error : message;
   return (
     <article>
       <h3>Publish commitment</h3>
-      <p role="status">{message}</p>
+      <p role="status">{displayedMessage}</p>
       {submission && (
         <p>
           Submitted transaction: <code>{submission.hash}</code>
@@ -446,18 +611,30 @@ export function Publish({ body }: { body: ReportBody }) {
       )}
       <button
         type="button"
-        disabled={busy || pending || confirmed}
+        disabled={disabledByConfig || busy || pending || confirmed}
         onClick={() => void run(false)}
       >
         Check wallet
       </button>{" "}
       <button
         type="button"
-        disabled={!ready || busy || pending || confirmed}
+        disabled={disabledByConfig || !ready || busy || pending || confirmed}
         onClick={() => void run(true)}
       >
         Publish
       </button>
+      {wrongNetwork && !disabledByConfig && !confirmed && (
+        <>
+          {" "}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void switchNetwork()}
+          >
+            Switch wallet to 43113
+          </button>
+        </>
+      )}
       {pending && (
         <>
           {" "}

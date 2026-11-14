@@ -46,3 +46,12 @@ Installed project tool versions beyond basic availability, package compatibility
 - https://eips.ethereum.org/EIPS/eip-1167 - standard minimal proxy runtime and fixed implementation; do not equate every clone with upgradeability.
 - https://github.com/ava-labs/wrapped-assets - official Fuji WAVAX deployment address used only for a read-only historical-state probe, not as a fixture score oracle.
 - docs/checks/fuji-history-2026-11-06.json - observed code/call/storage/header responses at four snapshots. Probe-only SHA-256 is not application bytecode keccak256.
+
+## M7 official documentation references (reviewed 2026-11-14)
+
+- https://build.avax.network/docs/quick-start/networks/fuji-testnet - official Avalanche Fuji C-Chain testnet parameters (chain ID `43113`, public RPC `https://api.avax-test.network/ext/bc/C/rpc`), faucet links, and explorer references.
+- https://build.avax.network/docs/dapps/developer-toolchains/foundry/deploying-smart-contracts - official Foundry deployment and verification guidance for Avalanche C-Chain / Fuji.
+- https://build.avax.network/docs/dapps/smart-contract-dev/deploy-smart-contracts/verify-smart-contracts - official Avalanche smart contract verification guidance (`forge verify-contract` with Routescan Etherscan-compatible endpoint `https://api.routescan.io/v2/network/testnet/evm/43113/etherscan` and `snowscan.xyz` / `snowtrace.io`).
+- https://faucet.avax.network/ and https://core.app/tools/testnet-faucet/ - official Fuji testnet AVAX faucets.
+- https://getfoundry.sh/forge/reference/script and https://getfoundry.sh/forge/reference/verify-contract and https://getfoundry.sh/cast/reference/wallet/new - Foundry CLI references matching local installed `forge 1.9.0-stable` / `cast 1.9.0-stable`.
+- https://nextjs.org/docs/app/getting-started/deploying and https://nextjs.org/docs/app/api-reference/config/next-config-js/output - Next.js Node.js server (`next start`) and standalone deployment references.
