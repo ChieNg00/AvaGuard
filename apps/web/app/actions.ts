@@ -1,15 +1,19 @@
 "use server";
 import {
   addressSchema,
+  buildIncompleteExplanation,
   buildReport,
+  buildTemplateExplanation,
   collectEvidence,
   createHttpTransport,
   decimalSchema,
   hashSchema,
   replayReport,
   parseReportBody,
+  type ReportExplanation,
 } from "@avaguard/analyzer";
 import { createPublicClient, getAddress, http, keccak256 } from "viem";
+import { getExplainRuntime } from "../lib/explain-server";
 import { registryAbi as abi, registryRuntimeHash } from "../lib/registry-abi";
 
 class DisplayError extends Error {}
@@ -61,13 +65,63 @@ export async function scan(target: string) {
         address: address(target).toLowerCase(),
       }),
     );
-    if (result.status === "complete")
+    if (result.status === "complete") {
+      const runtime = getExplainRuntime();
+      const fallbackUnavailable = (reason: string): ReportExplanation => ({
+        provenance: "template",
+        reportHash: result.reportHash,
+        rulesetVersion: result.body.rulesetVersion,
+        signalScore: result.body.signalScore,
+        band: result.band,
+        overview:
+          "Template explanation is unavailable for part of this report; deterministic report fields, canonical JSON export, and publication remain available.",
+        findings: [],
+        coverageSummary: "",
+        fallbackReason: reason,
+      });
+
+      let explanation: ReportExplanation;
+      let aiEnabled = false;
+
+      if (runtime.isAiEnabled()) {
+        const reg = runtime.tryRegisterBody(result.body);
+        if (reg.ok) {
+          explanation = reg.template;
+          aiEnabled = true;
+        } else {
+          const reason =
+            reg.code === "oversized-input"
+              ? "AI explanation skipped: report projection exceeds the 16,384-byte input limit; showing template."
+              : "AI explanation unavailable for this report; showing template.";
+          try {
+            explanation = buildTemplateExplanation(result.body, reason);
+          } catch {
+            explanation = fallbackUnavailable(reason);
+          }
+        }
+      } else {
+        try {
+          explanation = buildTemplateExplanation(result.body);
+        } catch {
+          explanation = fallbackUnavailable(
+            "Template explanation unavailable for this report.",
+          );
+        }
+      }
+
       return {
         status: result.status,
         band: result.band,
         body: result.body,
+        reportHash: result.reportHash,
+        explanation,
+        aiEnabled,
       } as const;
-    return result;
+    }
+    return {
+      ...result,
+      explanation: buildIncompleteExplanation(result),
+    } as const;
   });
 }
 export async function replay(input: unknown, hash: string) {
