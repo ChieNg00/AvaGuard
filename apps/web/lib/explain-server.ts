@@ -3,6 +3,7 @@ import {
   buildTemplateExplanationFromInput,
   createExplainService,
   EXPLAIN_PROMPT_VERSION,
+  ExplainInputError,
   ExplainProviderError,
   hashSchema,
   MAX_EXPLAIN_OUTPUT_BYTES,
@@ -11,6 +12,7 @@ import {
   type ReportBody,
   type ReportExplanation,
 } from "@avaguard/analyzer";
+import { BoundedReadError, readBoundedJson } from "./bounded-read";
 
 const PROJECTION_TTL_MS = 10 * 60 * 1000;
 const MAX_PROJECTIONS = 64;
@@ -98,16 +100,30 @@ export function createLoopbackHttpExplainProvider(options: {
         );
       }
 
-      const text = await response.text();
-      if (new TextEncoder().encode(text).byteLength > MAX_EXPLAIN_OUTPUT_BYTES) {
-        throw new ExplainProviderError(
-          "oversized",
-          "Explain response exceeded byte limit.",
-        );
-      }
       try {
-        return JSON.parse(text) as unknown;
-      } catch {
+        return await readBoundedJson(response, MAX_EXPLAIN_OUTPUT_BYTES);
+      } catch (err) {
+        if (err instanceof BoundedReadError) {
+          if (err.kind === "oversized") {
+            throw new ExplainProviderError(
+              "oversized",
+              "Explain response exceeded byte limit.",
+            );
+          }
+          if (err.kind === "aborted") {
+            throw new ExplainProviderError("timeout", "Explain request aborted.");
+          }
+          if (err.kind === "unreadable") {
+            throw new ExplainProviderError(
+              "outage",
+              "Explain response stream failed.",
+            );
+          }
+          throw new ExplainProviderError(
+            "invalid-json",
+            "Explain response was not valid JSON.",
+          );
+        }
         throw new ExplainProviderError(
           "invalid-json",
           "Explain response was not valid JSON.",
@@ -162,6 +178,24 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
     return { reportHash: input.reportHash, template };
   }
 
+  function tryRegisterBody(body: ReportBody):
+    | { ok: true; reportHash: string; template: ReportExplanation }
+    | { ok: false; code: "oversized-input" | "invalid-report" | "unknown"; error: string } {
+    try {
+      const { reportHash, template } = registerBody(body);
+      return { ok: true, reportHash, template };
+    } catch (err) {
+      if (err instanceof ExplainInputError) {
+        return { ok: false, code: err.code, error: err.message };
+      }
+      return {
+        ok: false,
+        code: "unknown",
+        error: "Unable to prepare AI explanation projection.",
+      };
+    }
+  }
+
   async function explainByHash(rawHash: string): Promise<
     | { ok: true; status: 200; explanation: ReportExplanation }
     | { ok: false; status: 400 | 404; error: string }
@@ -193,6 +227,7 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
   return {
     isAiEnabled: () => config.enabled && config.provider !== null,
     registerBody,
+    tryRegisterBody,
     explainByHash,
     projectionCount: () => projections.size,
   };

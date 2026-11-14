@@ -14,6 +14,8 @@ Implement packages/analyzer per SCANNER_SPEC.md, integrated into apps/web. Estab
 
 For M6 after the merged M5 local flow, run the [full Antigravity implementation prompt](M6_ANTIGRAVITY_PROMPT.md).
 
+For the three review findings on the M6 branch, use the [PR #7 fix prompt for Antigravity](M6_PR7_REVIEW_FIX_PROMPT.md).
+
 Implement deterministic templates and an optional Gemini server adapter only after credential setup is separately authorized. The no-key path works first. Use bounded validated findings/evidence/coverage/score, no arbitrary chain strings, exact-input cache with prompt/model versions, evidence-ID validation and unexecuted suggested checks. Mock provider calls for valid JSON, invalid JSON, invented IDs, timeout, 429 and missing key. Actual provider calls are not required for these tests. Run relevant pnpm tests and stop/report.
 
 ## Phase 4 Frontend and browser publication

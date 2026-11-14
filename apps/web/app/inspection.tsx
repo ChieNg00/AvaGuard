@@ -4,6 +4,7 @@ import {
   buildTemplateExplanation,
   verifyCommitment,
   type ReportBody,
+  type ReportExplanation,
 } from "@avaguard/analyzer";
 import { agrees, differences } from "../lib/publication";
 import { lookup, replay, scan } from "./actions";
@@ -17,6 +18,9 @@ export function Inspection({ item }: { item: Item }) {
   const { report } = item;
   const [trackedHash, setTrackedHash] = useState(report.reportHash);
   const [body, setBody] = useState<ReportBody>();
+  const [templateExplanation, setTemplateExplanation] =
+    useState<ReportExplanation>();
+  const [templateLimitation, setTemplateLimitation] = useState<string>();
   const [status, setStatus] = useState("Report body unavailable.");
   const [detail, setDetail] = useState("");
   const [importing, setImporting] = useState(false);
@@ -26,6 +30,8 @@ export function Inspection({ item }: { item: Item }) {
   if (trackedHash !== report.reportHash) {
     setTrackedHash(report.reportHash);
     setBody(undefined);
+    setTemplateExplanation(undefined);
+    setTemplateLimitation(undefined);
     setStatus("Report body unavailable.");
     setDetail("");
     setImporting(false);
@@ -45,6 +51,8 @@ export function Inspection({ item }: { item: Item }) {
     versions.current.compareId++;
     setComparing(false);
     setBody(undefined);
+    setTemplateExplanation(undefined);
+    setTemplateLimitation(undefined);
     setDetail("");
     if (!file) {
       setImporting(false);
@@ -69,6 +77,7 @@ export function Inspection({ item }: { item: Item }) {
       return;
     }
     if (versions.current.importId !== id) return;
+    let verifiedBody: ReportBody;
     try {
       const result = verifyCommitment(text, report.reportHash);
       if (result.status !== "commitment-matches") {
@@ -79,8 +88,7 @@ export function Inspection({ item }: { item: Item }) {
         setStatus("Hash matches, but registry summary fields disagree.");
         return;
       }
-      setBody(result.body);
-      setStatus("Commitment matches. Hash and registry summary fields agree.");
+      verifiedBody = result.body;
     } catch (e) {
       if (versions.current.importId === id)
         setStatus(
@@ -88,9 +96,23 @@ export function Inspection({ item }: { item: Item }) {
             ? "Malformed JSON. Choose another file."
             : "Invalid report schema. Choose another file.",
         );
+      return;
     } finally {
       if (versions.current.importId === id) setImporting(false);
     }
+
+    let nextExplanation: ReportExplanation | undefined;
+    let nextLimitation: string | undefined;
+    try {
+      nextExplanation = buildTemplateExplanation(verifiedBody);
+    } catch {
+      nextLimitation =
+        "Optional template explanation unavailable: this report contains a finding rule this viewer cannot interpret. Inspection, canonical fields, replay, and current-state comparison remain usable.";
+    }
+    setBody(verifiedBody);
+    setTemplateExplanation(nextExplanation);
+    setTemplateLimitation(nextLimitation);
+    setStatus("Commitment matches. Hash and registry summary fields agree.");
   }
 
   async function compare(original: boolean) {
@@ -168,7 +190,18 @@ export function Inspection({ item }: { item: Item }) {
         Interpretation belongs to the attester.
       </p>
       {body && <Coverage coverage={body.coverage} />}
-      {body && <ExplanationPanel explanation={buildTemplateExplanation(body)} />}
+      {body && templateExplanation && (
+        <ExplanationPanel explanation={templateExplanation} />
+      )}
+      {body && !templateExplanation && templateLimitation && (
+        <article className="explain-panel" aria-label="Report explanation">
+          <div className="explain-header">
+            <h3>Explanation</h3>
+            <span className="provenance-badge">Explanation unavailable</span>
+          </div>
+          <p role="status">{templateLimitation}</p>
+        </article>
+      )}
       <details>
         <summary>Commitment fields</summary>
         <pre>{JSON.stringify(report, null, 2)}</pre>

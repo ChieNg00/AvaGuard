@@ -1,32 +1,31 @@
 import { NextResponse } from "next/server";
 import { hashSchema } from "@avaguard/analyzer";
+import { BoundedReadError, readBoundedJson } from "../../../lib/bounded-read";
 import { getExplainRuntime } from "../../../lib/explain-server";
 
 const MAX_REQUEST_BYTES = 512;
 
 export async function POST(request: Request) {
-  let rawText: string;
-  try {
-    rawText = await request.text();
-  } catch {
-    return NextResponse.json(
-      { ok: false, error: "Invalid request body." },
-      { status: 400 },
-    );
-  }
-  if (new TextEncoder().encode(rawText).byteLength > MAX_REQUEST_BYTES) {
-    return NextResponse.json(
-      { ok: false, error: "Explain request exceeds size limit." },
-      { status: 413 },
-    );
-  }
-
   let parsedJson: unknown;
   try {
-    parsedJson = JSON.parse(rawText);
-  } catch {
+    parsedJson = await readBoundedJson(request, MAX_REQUEST_BYTES);
+  } catch (err) {
+    if (err instanceof BoundedReadError) {
+      if (err.kind === "oversized") {
+        return NextResponse.json(
+          { ok: false, error: "Explain request exceeds size limit." },
+          { status: 413 },
+        );
+      }
+      if (err.kind === "invalid-json") {
+        return NextResponse.json(
+          { ok: false, error: "Malformed JSON request." },
+          { status: 400 },
+        );
+      }
+    }
     return NextResponse.json(
-      { ok: false, error: "Malformed JSON request." },
+      { ok: false, error: "Invalid request body." },
       { status: 400 },
     );
   }

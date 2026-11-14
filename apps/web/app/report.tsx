@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import {
   canonicalReportJson,
+  EXPLAIN_PROMPT_VERSION,
   type ReportBody,
   type ReportExplanation,
 } from "@avaguard/analyzer";
@@ -52,7 +53,7 @@ export function ExplanationPanel({
       {explanation.provenance === "ai-assisted" && explanation.model && (
         <p className="explain-meta">
           Model: <code>{explanation.model}</code> · Prompt v
-          {explanation.promptVersion ?? "1"}
+          {explanation.promptVersion ?? EXPLAIN_PROMPT_VERSION}
           {explanation.cached ? " · cached" : ""}
         </p>
       )}

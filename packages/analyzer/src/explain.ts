@@ -19,7 +19,7 @@ import type { buildReport } from "./rules";
 type Confidence = NonNullable<ReportBody["findings"][number]["confidence"]>;
 type Coverage = ReportBody["coverage"];
 
-export const EXPLAIN_PROMPT_VERSION = "1";
+export const EXPLAIN_PROMPT_VERSION = "2";
 export const MAX_EXPLAIN_INPUT_BYTES = 16_384;
 export const MAX_EXPLAIN_OUTPUT_BYTES = 8_192;
 export const DEFAULT_EXPLAIN_REQUEST_TIMEOUT_MS = 2_500;
@@ -507,11 +507,9 @@ export class ExplainInputError extends Error {
   }
 }
 
-export function buildExplainInput(rawBody: ReportBody): {
+function projectExplainInput(rawBody: ReportBody): {
   body: ReportBody;
   input: ExplainInput;
-  canonicalJson: string;
-  digest: Hex;
 } {
   let body: ReportBody;
   try {
@@ -584,6 +582,16 @@ export function buildExplainInput(rawBody: ReportBody): {
     },
   });
 
+  return { body, input };
+}
+
+export function buildExplainInput(rawBody: ReportBody): {
+  body: ReportBody;
+  input: ExplainInput;
+  canonicalJson: string;
+  digest: Hex;
+} {
+  const { body, input } = projectExplainInput(rawBody);
   const canonicalJson = canonicalExplainInputJson(input);
   if (encoder.encode(canonicalJson).byteLength > MAX_EXPLAIN_INPUT_BYTES) {
     throw new ExplainInputError(
@@ -765,7 +773,7 @@ export function buildTemplateExplanation(
   body: ReportBody,
   fallbackReason?: string,
 ): ReportExplanation {
-  const { input } = buildExplainInput(body);
+  const { input } = projectExplainInput(body);
   return buildTemplateExplanationFromInput(input, fallbackReason);
 }
 
@@ -797,45 +805,12 @@ export function buildIncompleteExplanation(
 const aiItemSchema = z.strictObject({
   findingId: z.string().min(1).max(64),
   citedEvidenceIds: z.array(z.string().min(1).max(100)).min(1).max(32),
-  summary: z.string().min(1).max(600),
   suggestedCheckIds: z.array(z.string().min(1).max(64)).max(3).optional(),
 });
 
 const aiOutputSchema = z.strictObject({
-  overview: z.string().min(1).max(600),
-  items: z.array(aiItemSchema).min(1).max(32),
-  coverageNote: z.string().min(1).max(400).optional(),
+  items: z.array(aiItemSchema).min(1).max(64),
 });
-
-const UNSUPPORTED_CLAIM_PATTERNS = [
-  /\b(safe|safety|secure|safely|certified|certify|certifies|harmless|benign|trustworthy|risk[- ]free|zero[- ]risk|no[- ]risk|audited|scam|rug[- ]?pull|honeypot|malicious|exploit|legitimate)\b/i,
-  /\bno\s+risk\b/i,
-  /\b(?:fully|erc-?20)\s+compliant\b/i,
-  /\b(?:confirmed|guaranteed)\s+(?:eoa|multisig|safe|control)\b/i,
-  /\bis\s+(?:an?\s+eoa|a\s+multisig|not\s+a\s+proxy)\b/i,
-  /\ball\s+(?:admin\s+|owner\s+)?(?:privileges|powers|control)\s+(?:(?:are|were|have\s+been)\s+)?renounced\b/i,
-  /\b(?:only\s+(?:the\s+)?owner\s+can|exclusively\s+controlled|owner\s+can\s+mint|cannot\s+mint|can\s+definitely)\b/i,
-];
-
-const UNSAFE_MARKUP_PATTERN =
-  /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F<>]|https?:\/\/|javascript:|data:/i;
-
-function assertValidProse(text: string, label: string) {
-  if (UNSAFE_MARKUP_PATTERN.test(text)) {
-    throw new ExplainValidationError(
-      "unsupported-claim",
-      `${label} contains disallowed markup or control characters.`,
-    );
-  }
-  for (const pattern of UNSUPPORTED_CLAIM_PATTERNS) {
-    if (pattern.test(text)) {
-      throw new ExplainValidationError(
-        "unsupported-claim",
-        `${label} makes an unsupported safety, verdict, or access-control claim.`,
-      );
-    }
-  }
-}
 
 export type ExplainValidationCode =
   | "invalid-json"
@@ -899,15 +874,10 @@ export function validateAiResponse(
   if (!parsedResult.success) {
     throw new ExplainValidationError(
       "schema-invalid",
-      "AI explanation response violated the strict output schema.",
+      "AI explanation response violated the strict selection schema.",
     );
   }
   const parsed = parsedResult.data;
-
-  assertValidProse(parsed.overview, "overview");
-  if (parsed.coverageNote) {
-    assertValidProse(parsed.coverageNote, "coverageNote");
-  }
 
   const expectedById = new Map(input.findings.map((f) => [f.id, f]));
   const itemsById = new Map<string, (typeof parsed.items)[number]>();
@@ -959,7 +929,6 @@ export function validateAiResponse(
         }
       }
     }
-    assertValidProse(item.summary, `finding ${item.findingId}`);
     itemsById.set(item.findingId, item);
   }
 
@@ -970,8 +939,16 @@ export function validateAiResponse(
     );
   }
 
-  const findings: ExplainedFinding[] = input.findings.map((expected) => {
-    const item = itemsById.get(expected.id)!;
+  const template = buildTemplateExplanationFromInput(input);
+  const templateFindingById = new Map(
+    template.findings.map((f) => [f.findingId, f]),
+  );
+
+  // Preserve the provider's validated finding ordering and allowlisted check selection
+  // while rendering every claim and required evidence list deterministically.
+  const findings: ExplainedFinding[] = parsed.items.map((item) => {
+    const expected = expectedById.get(item.findingId)!;
+    const baseFinding = templateFindingById.get(expected.id)!;
     const checkMap = new Map(
       RULE_METADATA[expected.id].suggestedChecks.map((c) => [c.id, c.text]),
     );
@@ -979,29 +956,21 @@ export function validateAiResponse(
       (checkId) => checkMap.get(checkId)!,
     );
     return {
-      findingId: expected.id,
-      weight: expected.weight,
-      severity: expected.severity,
-      confidence: expected.confidence,
-      evidenceIds: [...item.citedEvidenceIds],
-      confidenceNote: confidenceNote(expected.confidence),
-      summary: item.summary.trim(),
+      ...baseFinding,
+      evidenceIds: [...expected.evidenceIds],
       suggestedChecks,
     };
   });
 
-  const baseCoverage = summarizeCoverage(input.coverage);
   return {
     provenance: "ai-assisted",
-    reportHash: input.reportHash,
-    rulesetVersion: input.rulesetVersion,
-    signalScore: input.signalScore,
-    band: input.band,
-    overview: parsed.overview.trim(),
+    reportHash: template.reportHash,
+    rulesetVersion: template.rulesetVersion,
+    signalScore: template.signalScore,
+    band: template.band,
+    overview: template.overview,
     findings,
-    coverageSummary: parsed.coverageNote
-      ? `${baseCoverage} Note: ${parsed.coverageNote.trim()}`
-      : baseCoverage,
+    coverageSummary: template.coverageSummary,
     model: meta.model,
     promptVersion: meta.promptVersion,
     cached: Boolean(meta.cached),

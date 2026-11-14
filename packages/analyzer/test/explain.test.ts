@@ -64,16 +64,28 @@ function makeDecoyZeroReport() {
   });
 }
 
-function makeValidAiPayload(input: ExplainInput, tag = "valid") {
+function makeValidAiPayload(
+  input: ExplainInput,
+  options?: {
+    reverseOrder?: boolean;
+    checkIndex?: number;
+  },
+) {
+  const orderedFindings = options?.reverseOrder
+    ? [...input.findings].reverse()
+    : input.findings;
   return {
-    overview: `Signal score is ${input.signalScore} / 100 (${input.band}) [${tag}]; weights reflect observed capability indicators only.`,
-    items: input.findings.map((f) => ({
+    items: orderedFindings.map((f) => ({
       findingId: f.id,
       citedEvidenceIds: [...f.evidenceIds],
-      summary: `${f.id} observed via ${f.evidenceIds.join(", ")} [${tag}]; access control remains unverified.`,
-      suggestedCheckIds: f.allowedCheckIds.slice(0, 1),
+      ...(f.allowedCheckIds.length > 0
+        ? {
+            suggestedCheckIds: [
+              f.allowedCheckIds[options?.checkIndex ?? 0] ?? f.allowedCheckIds[0],
+            ],
+          }
+        : {}),
     })),
-    coverageNote: `Reviewed ${input.coverage.checked.length} checked items [${tag}].`,
   };
 }
 
@@ -202,7 +214,7 @@ it("explains MintableToken (35) and DecoyConstantToken (0) accurately and skips 
     model: "mock-gemini",
     async explain(input) {
       providerCalls++;
-      return makeValidAiPayload(input, "ok");
+      return makeValidAiPayload(input, { reverseOrder: true, checkIndex: 1 });
     },
   };
 
@@ -253,12 +265,28 @@ it("explains MintableToken (35) and DecoyConstantToken (0) accurately and skips 
   expect(providerCalls).toBe(1);
   expect(aiSuccess.explanation.provenance).toBe("ai-assisted");
   expect(aiSuccess.explanation.model).toBe("mock-gemini");
-  expect(aiSuccess.explanation.promptVersion).toBe(EXPLAIN_PROMPT_VERSION);
+  expect(EXPLAIN_PROMPT_VERSION).toBe("2");
+  expect(aiSuccess.explanation.promptVersion).toBe("2");
+  expect(aiSuccess.explanation.overview).toBe(templateMint.overview);
+  expect(aiSuccess.explanation.coverageSummary).toBe(
+    templateMint.coverageSummary,
+  );
+  expect(aiSuccess.explanation.findings.map((f) => f.findingId)).toEqual(
+    [...templateMint.findings].reverse().map((f) => f.findingId),
+  );
+  expect(
+    aiSuccess.explanation.findings.find((f) => f.findingId === "R-MINT")
+      ?.suggestedChecks,
+  ).toEqual([
+    "Review historical Transfer events from the zero address on an explorer to observe past minting.",
+  ]);
 });
 
-it("rejects malformed JSON, invalid schema, invented/duplicate findings, bad/cross-finding citations, and unsupported safety claims", async () => {
+it("rejects free-form conclusions paired with valid citations, unknown/missing/duplicate findings, bad citations, and unknown checks, then recovers", async () => {
   const mintable = await makeMintableReport();
   const { input } = buildExplainInput(mintable.body);
+  const templateMint = buildTemplateExplanation(mintable.body);
+  const control = makeValidAiPayload(input);
 
   const badCases: Array<{ name: string; marker: string; payload: unknown }> = [
     {
@@ -270,47 +298,94 @@ it("rejects malformed JSON, invalid schema, invented/duplicate findings, bad/cro
       name: "unknown top-level field (signalScore override attempt)",
       marker: "REJECTED_SCORE_OVERRIDE",
       payload: {
-        ...makeValidAiPayload(input, "REJECTED_SCORE_OVERRIDE"),
+        ...control,
         signalScore: 0,
       },
     },
     {
-      name: "invented finding",
-      marker: "REJECTED_INVENTED_FINDING",
+      name: "wrong score in free-form overview paired with valid citations",
+      marker: "0 / 100",
       payload: {
-        ...makeValidAiPayload(input, "REJECTED_INVENTED_FINDING"),
+        ...control,
+        overview: "Signal score is 0 / 100 (Few signals) despite mint match.",
+      },
+    },
+    {
+      name: "unsupported mint authority in item summary paired with valid citations",
+      marker: "unlimited deployer supply cap",
+      payload: {
+        ...control,
+        items: control.items.map((item) =>
+          item.findingId === "R-MINT"
+            ? {
+                ...item,
+                summary:
+                  "Minting enforces an unlimited deployer supply cap via owner.",
+              }
+            : item,
+        ),
+      },
+    },
+    {
+      name: "false coverage note paired with valid citations",
+      marker: "Source verification passed completely",
+      payload: {
+        ...control,
+        coverageNote: "Source verification passed completely.",
+      },
+    },
+    {
+      name: "invented finding",
+      marker: "R-INVENTED",
+      payload: {
+        ...control,
         items: [
-          ...makeValidAiPayload(input).items,
+          ...control.items,
           {
             findingId: "R-INVENTED",
             citedEvidenceIds: ["owner"],
-            summary: "REJECTED_INVENTED_FINDING",
           },
         ],
       },
     },
     {
       name: "duplicate finding",
-      marker: "REJECTED_DUP_FINDING",
+      marker: "ai-assisted",
       payload: {
-        ...makeValidAiPayload(input, "REJECTED_DUP_FINDING"),
-        items: [
-          makeValidAiPayload(input).items[0],
-          makeValidAiPayload(input).items[0],
-        ],
+        ...control,
+        items: [control.items[0], control.items[0]],
+      },
+    },
+    {
+      name: "omitted finding",
+      marker: "ai-assisted",
+      payload: {
+        ...control,
+        items: control.items.slice(0, -1),
+      },
+    },
+    {
+      name: "empty citedEvidenceIds",
+      marker: "ai-assisted",
+      payload: {
+        ...control,
+        items: control.items.map((item) =>
+          item.findingId === "R-MINT"
+            ? { ...item, citedEvidenceIds: [] }
+            : item,
+        ),
       },
     },
     {
       name: "nonexistent evidence ID",
-      marker: "REJECTED_DANGLING_ID",
+      marker: "nonexistent-evidence",
       payload: {
-        ...makeValidAiPayload(input, "REJECTED_DANGLING_ID"),
-        items: makeValidAiPayload(input).items.map((item) =>
+        ...control,
+        items: control.items.map((item) =>
           item.findingId === "R-MINT"
             ? {
                 ...item,
                 citedEvidenceIds: ["nonexistent-evidence"],
-                summary: "REJECTED_DANGLING_ID",
               }
             : item,
         ),
@@ -318,15 +393,14 @@ it("rejects malformed JSON, invalid schema, invented/duplicate findings, bad/cro
     },
     {
       name: "valid evidence ID attached to the wrong finding (cross-finding citation)",
-      marker: "REJECTED_CROSS_FINDING",
+      marker: "ai-assisted",
       payload: {
-        ...makeValidAiPayload(input, "REJECTED_CROSS_FINDING"),
-        items: makeValidAiPayload(input).items.map((item) =>
+        ...control,
+        items: control.items.map((item) =>
           item.findingId === "R-MINT"
             ? {
                 ...item,
                 citedEvidenceIds: ["owner"],
-                summary: "REJECTED_CROSS_FINDING",
               }
             : item,
         ),
@@ -334,38 +408,29 @@ it("rejects malformed JSON, invalid schema, invented/duplicate findings, bad/cro
     },
     {
       name: "cross-finding suggestedCheckId",
-      marker: "REJECTED_CROSS_CHECK",
+      marker: "ai-assisted",
       payload: {
-        ...makeValidAiPayload(input, "REJECTED_CROSS_CHECK"),
-        items: makeValidAiPayload(input).items.map((item) =>
+        ...control,
+        items: control.items.map((item) =>
           item.findingId === "R-OWNER-EOA"
             ? {
                 ...item,
                 suggestedCheckIds: ["mint-authority"],
-                summary: "REJECTED_CROSS_CHECK",
               }
             : item,
         ),
       },
     },
     {
-      name: "unsupported safety claim",
-      marker: "This contract is safe and audited",
+      name: "unknown suggestedCheckId",
+      marker: "not-a-check-id",
       payload: {
-        ...makeValidAiPayload(input),
-        overview: "This contract is safe and audited with zero risk.",
-      },
-    },
-    {
-      name: "unsupported access control claim",
-      marker: "owner can mint freely",
-      payload: {
-        ...makeValidAiPayload(input),
-        items: makeValidAiPayload(input).items.map((item) =>
+        ...control,
+        items: control.items.map((item) =>
           item.findingId === "R-MINT"
             ? {
                 ...item,
-                summary: "Because owner is present, the owner can mint freely.",
+                suggestedCheckIds: ["not-a-check-id"],
               }
             : item,
         ),
@@ -374,23 +439,60 @@ it("rejects malformed JSON, invalid schema, invented/duplicate findings, bad/cro
   ];
 
   for (const testCase of badCases) {
+    let returnValid = false;
     const service = createExplainService({
       enabled: true,
       maxAttempts: 1,
       provider: {
         model: "mock-gemini",
-        async explain() {
-          return testCase.payload;
+        async explain(reqInput) {
+          return returnValid ? makeValidAiPayload(reqInput) : testCase.payload;
         },
       },
     });
     const res = await service.explainReport(mintable.body);
     expect(res.explanation.provenance, testCase.name).toBe("template");
     expect(res.explanation.fallbackReason, testCase.name).toBeTruthy();
-    expect(JSON.stringify(res.explanation), testCase.name).not.toContain(
-      testCase.marker,
+    expect(service.cacheSize(), testCase.name).toBe(0);
+    if (testCase.marker !== "ai-assisted") {
+      expect(JSON.stringify(res.explanation), testCase.name).not.toContain(
+        testCase.marker,
+      );
+    }
+
+    // Invalid output must not pollute cache; next valid control recovers cleanly.
+    returnValid = true;
+    const recovered = await service.explainReport(mintable.body);
+    expect(recovered.cacheHit, testCase.name).toBe(false);
+    expect(recovered.explanation.provenance, testCase.name).toBe("ai-assisted");
+    expect(recovered.explanation.overview, testCase.name).toBe(
+      templateMint.overview,
     );
+    expect(service.cacheSize(), testCase.name).toBe(1);
   }
+
+  // Every rendered claim must still display all evidence it needs (owner + owner-code).
+  const partialOwnerCitationService = createExplainService({
+    enabled: true,
+    provider: {
+      model: "mock-gemini",
+      async explain(reqInput) {
+        return {
+          items: reqInput.findings.map((f) => ({
+            findingId: f.id,
+            citedEvidenceIds: f.id === "R-OWNER-EOA" ? ["owner"] : [...f.evidenceIds],
+            suggestedCheckIds: f.allowedCheckIds.slice(0, 1),
+          })),
+        };
+      },
+    },
+  });
+  const ownerRes = await partialOwnerCitationService.explainReport(mintable.body);
+  expect(ownerRes.explanation.provenance).toBe("ai-assisted");
+  expect(
+    ownerRes.explanation.findings.find((f) => f.findingId === "R-OWNER-EOA")
+      ?.evidenceIds,
+  ).toEqual(["owner", "owner-code"]);
 });
 
 it("excludes untrusted metadata and free-text markers from projected provider requests and makes zero calls for rejected reports", async () => {
@@ -403,7 +505,7 @@ it("excludes untrusted metadata and free-text markers from projected provider re
       model: "mock-gemini",
       async explain(input) {
         observedRequests.push(input);
-        return makeValidAiPayload(input, "clean");
+        return makeValidAiPayload(input);
       },
     },
   });
@@ -476,7 +578,7 @@ it("handles timeout, 429 rate-limit, outage, and oversized output within bounds 
             items: [],
           });
         }
-        return makeValidAiPayload(input, "recovered");
+        return makeValidAiPayload(input);
       },
     },
   });
@@ -564,7 +666,7 @@ it("caches equivalent canonical explain inputs and invalidates on owner, impleme
         model,
         async explain(input) {
           providerCalls++;
-          return makeValidAiPayload(input, `${model}-v${promptVersion}`);
+          return makeValidAiPayload(input);
         },
       },
     });
@@ -617,7 +719,30 @@ it("caches equivalent canonical explain inputs and invalidates on owner, impleme
   expect(promptV2Res.cacheHit).toBe(false);
   expect(providerCalls).toBe(6);
 
+  // Changing model & promptVersion tested above; verify deterministic template
+  // remains independent of the 16,384-byte provider-input projection limit.
   const modelBRes = await makeService("model-b", "1").explainReport(base.body);
   expect(modelBRes.cacheHit).toBe(false);
   expect(providerCalls).toBe(7);
+
+  // Deterministic template remains independent of the 16,384-byte provider-input limit.
+  const largeBody = structuredClone(base.body);
+  const covGroups = [
+    largeBody.coverage.checked,
+    largeBody.coverage.notChecked,
+    largeBody.coverage.unavailable,
+    largeBody.coverage.notApplicable,
+  ];
+  for (let i = 0; i < 200; i++) {
+    covGroups[i % 4].push({
+      id: `extra-coverage-item-${String(i).padStart(3, "0")}-${"a".repeat(30)}`,
+      reason: "Synthetic valid coverage item to exceed 16384-byte explain projection.",
+    });
+  }
+  const parsedLarge = parseReportBody(largeBody);
+  expect(() => buildExplainInput(parsedLarge)).toThrow(/maximum byte limit/);
+  const largeTemplate = buildTemplateExplanation(parsedLarge);
+  expect(largeTemplate.provenance).toBe("template");
+  expect(largeTemplate.reportHash).toBe(reportHash(parsedLarge));
+  expect(largeTemplate.signalScore).toBe(parsedLarge.signalScore);
 });

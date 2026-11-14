@@ -6,6 +6,14 @@ import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
+import {
+  encodeFunctionData,
+  getAddress,
+  keccak256,
+  parseAbi,
+  stringToHex,
+  zeroAddress,
+} from "viem";
 
 const [rpc, registry, fixture, attester] = process.argv.slice(2);
 assert.equal(rpc, "http://127.0.0.1:18545");
@@ -471,6 +479,104 @@ try {
     .getByText(/inconclusive · historical-state-unavailable/)
     .waitFor();
   prune = false;
+
+  // M6 review fix: Lookup handles a canonical body whose finding ID cannot use the optional template.
+  const sortKeys = (value) => {
+    if (Array.isArray(value)) return value.map(sortKeys);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value)
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([k, v]) => [k, sortKeys(v)]),
+      );
+    }
+    return value;
+  };
+  const unknownObj = JSON.parse(json);
+  unknownObj.findings = [
+    ...unknownObj.findings,
+    {
+      id: "R-FUTURE-SIGNAL",
+      severity: "info",
+      weight: 0,
+      confidence: "call-result",
+      evidenceIds: ["owner"],
+      explanation: "Attested custom rule text must not be rendered as template.",
+    },
+  ].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const unknownJson = JSON.stringify(sortKeys(unknownObj));
+  const unknownReportHash = keccak256(stringToHex(unknownJson));
+  const publishAbi = parseAbi([
+    "function publish((address target,uint8 score,bytes32 codehash,address implementation,bytes32 reportHash,uint32 rulesetVersion,uint64 blockNumber,bytes32 blockHash) p)",
+  ]);
+  const publishData = encodeFunctionData({
+    abi: publishAbi,
+    functionName: "publish",
+    args: [
+      {
+        target: getAddress(unknownObj.address),
+        score: unknownObj.signalScore,
+        codehash: unknownObj.codehash,
+        implementation: getAddress(unknownObj.proxy.implementation ?? zeroAddress),
+        reportHash: unknownReportHash,
+        rulesetVersion: unknownObj.rulesetVersion,
+        blockNumber: BigInt(unknownObj.blockNumber),
+        blockHash: unknownObj.blockHash,
+      },
+    ],
+  });
+  const unknownTxHash = await anvilRpc("eth_sendTransaction", [
+    { from: attester, to: registry, data: publishData, gas: "0x7a120" },
+  ]);
+  let unknownReceipt = null;
+  for (let i = 0; i < 40 && !unknownReceipt; i++) {
+    unknownReceipt = await anvilRpc("eth_getTransactionReceipt", [unknownTxHash]);
+    if (!unknownReceipt) await delay(100);
+  }
+  assert.equal(unknownReceipt?.status, "0x1");
+
+  await fresh.getByText("Find latest").click();
+  await fresh.getByText("Report body unavailable.", { exact: true }).waitFor();
+  await uploadNamed(
+    "unknown-rule.json",
+    unknownJson,
+    /Hash and registry summary fields agree/,
+  );
+  await fresh
+    .locator(".explain-panel .provenance-badge")
+    .getByText("Explanation unavailable", { exact: true })
+    .waitFor();
+  await fresh
+    .locator(".explain-panel")
+    .getByText(/Optional template explanation unavailable: this report contains a finding rule/)
+    .waitFor();
+  assert.equal(
+    await fresh
+      .locator(".explain-panel")
+      .getByText(/Attested custom rule text/)
+      .count(),
+    0,
+  );
+  assert(!(await replayBtn.isDisabled()));
+  await replayBtn.click();
+  await fresh.getByText(/Original-block replay: replay-mismatch/).waitFor();
+  await scanBtn.click();
+  await fresh.locator('pre[role="status"]').getByText(/Finding R-FUTURE-SIGNAL/).waitFor();
+
+  // Switch back to the supported record at history index 0 and verify normal template returns.
+  await fresh.getByLabel(/History index/).fill("0");
+  await fresh.getByText("Read history entry").click();
+  await fresh.getByText("Report body unavailable.", { exact: true }).waitFor();
+  await uploadNamed(
+    "supported.json",
+    json,
+    /Hash and registry summary fields agree/,
+  );
+  await fresh
+    .locator(".explain-panel .provenance-badge")
+    .getByText("Template explanation", { exact: true })
+    .waitFor();
+  await fresh.locator(".explain-panel").getByText(/35 \/ 100/).waitFor();
 
   // P2: Receipt recovery and wallet events with provider installed before Publish subscribes.
   await anvilRpc("evm_mine", []);
@@ -1098,13 +1204,15 @@ try {
     explainRequestCount++;
     const currentReqIndex = explainRequestCount;
     if (currentReqIndex === 1) markFirstExplainSeen();
-    const makePayload = (tag) => ({
-      overview: `Signal score is ${input.signalScore} / 100 (${input.band}) [${tag}].`,
+    const makePayload = (mintCheckId) => ({
       items: input.findings.map((f) => ({
         findingId: f.id,
         citedEvidenceIds: [...f.evidenceIds],
-        summary: `${f.id} explained via ${f.evidenceIds.join(", ")} [${tag}]; access control unverified.`,
-        suggestedCheckIds: f.allowedCheckIds.slice(0, 1),
+        ...(f.id === "R-MINT"
+          ? { suggestedCheckIds: [mintCheckId] }
+          : f.allowedCheckIds.length > 0
+            ? { suggestedCheckIds: [f.allowedCheckIds[0]] }
+            : {}),
       })),
     });
 
@@ -1113,9 +1221,7 @@ try {
         heldRequests.push(() => {
           if (!res.writableEnded && !res.headersSent) {
             res.setHeader("content-type", "application/json");
-            res.end(
-              JSON.stringify(makePayload(`STALE_BLOCK_${input.blockNumber}`)),
-            );
+            res.end(JSON.stringify(makePayload("mint-authority")));
           }
           resolve();
         });
@@ -1126,14 +1232,14 @@ try {
       res.setHeader("content-type", "application/json");
       res.end(
         JSON.stringify({
-          ...makePayload("REJECTED"),
+          ...makePayload("mint-events"),
           overview: "This contract is safe and audited with zero risk.",
         }),
       );
       return;
     }
     res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify(makePayload(`FRESH_BLOCK_${input.blockNumber}`)));
+    res.end(JSON.stringify(makePayload("mint-events")));
   });
   explainMock.listen(0, "127.0.0.1");
   await once(explainMock, "listening");
@@ -1208,23 +1314,45 @@ try {
       .locator(".explain-panel .provenance-badge")
       .getByText("AI-assisted explanation", { exact: true })
       .waitFor();
+    await explainPage.locator(".explain-panel").getByText("Prompt v2").waitFor();
     await explainPage
       .locator(".explain-panel")
-      .getByText(new RegExp(`FRESH_BLOCK_${block2}`))
+      .getByText(new RegExp(`at block ${block2}`))
       .first()
       .waitFor();
+    await explainPage
+      .locator(".explain-panel")
+      .getByText(/Review historical Transfer events from the zero address/)
+      .waitFor();
+    assert.equal(
+      await explainPage
+        .locator(".explain-panel")
+        .getByText(/Inspect verified source or contract ABI outside AvaGuard/)
+        .count(),
+      0,
+    );
 
-    // Release delayed Scan #1 AI response and confirm it is discarded
+    // Release delayed Scan #1 AI response (mint-authority) and confirm it is discarded
     while (heldRequests.length) heldRequests.shift()();
     await delay(200);
-    assert.equal(await explainPage.getByText(/STALE_BLOCK_/).count(), 0);
+    assert.equal(
+      await explainPage
+        .locator(".explain-panel")
+        .getByText(/Inspect verified source or contract ABI outside AvaGuard/)
+        .count(),
+      0,
+    );
     await explainPage
       .locator(".explain-panel")
-      .getByText(new RegExp(`FRESH_BLOCK_${block2}`))
+      .getByText(new RegExp(`at block ${block2}`))
       .first()
       .waitFor();
+    await explainPage
+      .locator(".explain-panel")
+      .getByText(/Review historical Transfer events from the zero address/)
+      .waitFor();
 
-    // Rejected safety claim falls back to labeled template and hides rejected text
+    // Rejected free-form claim falls back to labeled template and hides rejected text
     explainMode = "unsafe-claim";
     await anvilRpc("evm_mine", []);
     const block3 = parseInt(await anvilRpc("eth_blockNumber", []), 16);
