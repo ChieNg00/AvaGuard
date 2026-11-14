@@ -9,6 +9,7 @@ import {
   type RpcLog,
 } from "viem";
 import { registryAbi } from "./registry-abi";
+import { networkLabelForMode, type AvaguardMode } from "./publication-config";
 
 export type SubmissionStatus =
   | "pending"
@@ -23,6 +24,8 @@ export type Submission = {
   registry: Address;
   registryCodehash: Hex;
   attester: Address;
+  mode?: AvaguardMode;
+  networkLabel?: string;
   /** Verified nonce observed from a node transaction matching `hash` and `attester`. */
   nonce?: number;
   submittedBlock?: bigint;
@@ -129,7 +132,10 @@ export type ContextReader = (
   block: string,
   hash: string,
 ) => Promise<
-  | { readonly ok: true; readonly data: { address: Address; codehash: Hex } }
+  | {
+      readonly ok: true;
+      readonly data: { address: Address; codehash: Hex; mode?: AvaguardMode };
+    }
   | { readonly ok: false; readonly error: string }
 >;
 
@@ -346,11 +352,22 @@ async function verifySubmissionNetwork(
   checkContext: ContextReader,
   submission: Submission,
 ): Promise<NetworkCheck> {
+  const label =
+    submission.networkLabel ??
+    networkLabelForMode(submission.mode ?? "local");
   const ctx = await checkContext(submission.blockNumber, submission.blockHash);
   if (!ctx.ok)
     return {
       ok: false,
       outcome: { status: "unavailable", message: ctx.error },
+    };
+  if (submission.mode && ctx.data.mode && ctx.data.mode !== submission.mode)
+    return {
+      ok: false,
+      outcome: {
+        status: "mismatch",
+        message: `Publication environment changed. Switch back to ${label} and use Check receipt.`,
+      },
     };
   if (
     ctx.data.address.toLowerCase() !== submission.registry.toLowerCase() ||
@@ -360,8 +377,7 @@ async function verifySubmissionNetwork(
       ok: false,
       outcome: {
         status: "mismatch",
-        message:
-          "Reader registry or snapshot mismatch. Switch back to the original local Anvil network (43113) and use Check receipt.",
+        message: `Reader registry or snapshot mismatch. Switch back to the original ${label} and use Check receipt.`,
       },
     };
   if ((await reader.getChainId()) !== 43113)
@@ -369,8 +385,7 @@ async function verifySubmissionNetwork(
       ok: false,
       outcome: {
         status: "wrong-network",
-        message:
-          "Wrong wallet network. Select the original local Anvil network (43113) and use Check receipt.",
+        message: `Wrong wallet network. Select the original ${label} and use Check receipt.`,
       },
     };
   const [snapshot, code] = await Promise.all([
@@ -387,8 +402,7 @@ async function verifySubmissionNetwork(
       ok: false,
       outcome: {
         status: "mismatch",
-        message:
-          "Wallet and reader registry or snapshot mismatch. Select the original local Anvil network (43113) and use Check receipt.",
+        message: `Wallet and reader registry or snapshot mismatch. Select the original ${label} and use Check receipt.`,
       },
     };
   return { ok: true };
@@ -424,6 +438,9 @@ export async function verifySubmissionReceipt({
     Boolean(getChainRevision && getChainRevision() !== chainBefore);
 
   async function handleMidReadChainChange(): Promise<ReceiptOutcome> {
+    const label =
+      submission.networkLabel ??
+      networkLabelForMode(submission.mode ?? "local");
     try {
       const currentNetwork = await verifySubmissionNetwork(
         reader,
@@ -434,8 +451,7 @@ export async function verifySubmissionReceipt({
       if (!currentNetwork.ok) return currentNetwork.outcome;
       return {
         status: "pending",
-        message:
-          "Wallet network changed while reading the receipt. Use Check receipt to verify the original submission on local Anvil (43113).",
+        message: `Wallet network changed while reading the receipt. Use Check receipt to verify the original submission on ${label}.`,
       };
     } catch (err) {
       if (isAbortError(err, signal)) throw err;

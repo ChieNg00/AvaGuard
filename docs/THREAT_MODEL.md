@@ -25,6 +25,7 @@ The analyzer is a trusted computation source and browser-wallet attesters are tr
 | Misleading dispatcher pattern | PUSH4/EQ is only a heuristic; constants/dead code/custom dispatch can fool incomplete analysis. Negative controls and explicit coverage, no privilege claims. |
 | Snapshot mixing or dishonest provider | Fixed B for every required read plus header/hash checks. No reorg recovery subsystem; provider trust and consistency checks remain. |
 | Misleading low score | Few signals is not safety, severity is not exploit probability, and access control is unexamined. Coverage is adjacent to score. |
+| Misconfigured mode or hosted origin mismatch | Server `AVAGUARD_ENV` explicitly separates `local` (loopback RPC + Anvil) from `fuji` (non-loopback HTTPS RPC + chain 43113 + pinned `registryRuntimeHash`), disables wallet publication/lookup on missing or invalid config while keeping read-only scans usable, and restricts browser publication to loopback (`local`) or configured `AVAGUARD_APP_ORIGIN` / HTTPS (`fuji`). |
 
 ## Claims we do not make
 

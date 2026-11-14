@@ -24,6 +24,10 @@ Build English Scan/Lookup, wagmi injected-only wallet connection, Fuji switch, l
 
 ## Phase 5 Delivery preparation
 
+After the merged M6 implementation, use [M7 delivery preparation](M7_PREPARATION_PROMPT.md) for the current gaps, implementation scope and acceptance checks. Preparation does not complete the public-delivery milestone.
+
+For Antigravity, execute the [full M7 preparation prompt](M7_ANTIGRAVITY_PROMPT.md), which includes the code paths, local/Fuji behavior, deployable examples, runbook deliverables, regression matrix and final handoff.
+
 Prepare user-run Foundry keystore/faucet/deployment/attester/fixture/source-verification commands using current primary docs. Do not run wallet import or deployment. Complete judges' README, threat model, report export/retrieval instructions, real-address table only when known, and a 2-3 minute demo script. Include semantic negative controls and template fallback. Run available local checks and stop/report. Execute deployments or publish links only under a subsequent explicit instruction with appropriate wallet/user interaction.
 
 The phase prompts group the detailed M2-M7 milestones in PLAN.md; they do not rename or duplicate source directories. PROGRESS.md must record which concrete outcome was achieved. Scripts/commands must exist before claiming their checks ran.

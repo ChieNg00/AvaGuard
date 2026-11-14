@@ -1,6 +1,15 @@
 # AvaGuard ERC20 risk signals on Avalanche
 
-ERC-20 risk-signal workspace for Team1 Vietnam UniHack 2026. The local M5 flow supports scanning, canonical report export, attester publication, lookup and independent replay. See [the local demo](docs/M5_DEMO.md) for startup commands and wallet setup.
+ERC-20 risk-signal workspace for Team1 Vietnam UniHack 2026. The local M5/M6 flow supports scanning, evidence-bound explanations, canonical report export, attester publication, lookup and independent replay. See [the local demo](docs/M5_DEMO.md) for startup commands and wallet setup.
+
+## Current status — 2026-11-14
+
+- M0–M6 have recorded local verification. [M6 PR #7](https://github.com/ChieNg00/AvaGuard/pull/7) merged into `main` at `76857b1`; both CI jobs passed for final PR head `193391f`. See [PROGRESS.md](docs/PROGRESS.md) for the fresh merged-checkout checks and their limits.
+- Explanations work without a key. Optional AI behavior has been tested with local mocks only; no live Gemini adapter is implemented. Prompt v2 lets the model select validated evidence/check IDs and ordering; displayed conclusions remain deterministic.
+- Publication and receipt recovery previously required the local Anvil/loopback environment; M7 preparation now adds explicit `local` and `fuji` server/client configuration modes (`AVAGUARD_ENV`), reproducible `RiskRegistry` artifact identity checks (`scripts/verify-registry-identity.mjs`), deployable Fuji demo contracts (`packages/contracts/src/DemoTokens.sol` + `script/DeployDemo.s.sol`), user-run deployment/verification scripts (`scripts/fuji-deploy.sh`), and delivery/demo docs ([M7 delivery runbook](docs/M7_DELIVERY.md), [demo script](docs/DEMO_SCRIPT.md)).
+- Live Fuji broadcast, explorer source verification, real browser wallet smoke checks, public hosting, and submission recording remain user-executed after M7 preparation; see [M7 delivery runbook](docs/M7_DELIVERY.md) and [M7 execution guide](docs/M7_ANTIGRAVITY_PROMPT.md).
+
+The M1/M2 sections below retain historical observations; use the current status, progress log and local demo for the implemented flow.
 
 ## Confirmed scope
 
@@ -17,8 +26,8 @@ ERC-20 risk-signal workspace for Team1 Vietnam UniHack 2026. The local M5 flow s
 1. Read `docs/PRODUCT_SPEC.md`, `docs/SCANNER_SPEC.md` and `docs/DECISIONS.md` together.
 2. Read `docs/THREAT_MODEL.md` and `docs/ACCEPTANCE.md` before implementation.
 3. Open this folder as the working project in Codex or Antigravity.
-4. Review the M1 commands and limits below; M0/M1 have been executed.
-5. Follow the local M5 demo above. Earlier milestone entries below describe their original scope.
+4. Review the current status and latest entries in `docs/PROGRESS.md`.
+5. Follow the local M5/M6 demo above, or use `docs/M7_PREPARATION_PROMPT.md` to scope the next implementation request.
 
 Codex recognizes AGENTS.md as project guidance. For Antigravity, explicitly ask it to read the file; automatic discovery has not been verified. INIT_PROMPT.md is ordinary portable project text, not a claim about an IDE-specific configuration format.
 

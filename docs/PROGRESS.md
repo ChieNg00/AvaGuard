@@ -356,3 +356,66 @@ Early Edge runs timed out. Final browser checks used pinned Playwright with its 
   - `pnpm test:browser` (`BypassSandbox: true` after sandbox WSL check failed) -> exited 0 (`node scripts/browser-check.mjs`: M5 + M6 Chromium acceptance suite passed, including `R-FUTURE-SIGNAL` Lookup import/replay/diff recovery, delayed `mint-authority` stale-response discard vs `mint-events`, and free-form validation fallback; Vitest filtered integration run reported `1 passed | 12 skipped (13)` for `publishes an analyzer snapshot and verifies the body against its retrieved commitment`).
   - `git diff --check; git status --short --branch` -> exited 0 with clean formatting; local diff left uncommitted on `m6/AI-explanation-integration`.
 - **Remaining / outside M6 scope**: Live Gemini API provider testing with real credentials, manual Core wallet extension smoke test against local Anvil, pushing/merging PR #7, and M7 remain outside this task.
+
+## 2026-11-14 — merged M6 progress review and M7 preparation
+
+User requested a progress review and preparation for the next task. Started on clean `main` at `76857b144122b5266eb3dac5ddadc844ff2fdf9c`. No application, contract, dependency or credential changes were made for this review.
+
+### Repository and hosted evidence
+
+- GitHub confirms [PR #7](https://github.com/ChieNg00/AvaGuard/pull/7) merged at `76857b1`. The earlier entry's pending merge item is resolved.
+- [CI run 43558473091](https://github.com/ChieNg00/AvaGuard/actions/runs/43558473091) completed successfully for final PR head `193391f07b2c62bf0d95e065dd01956abaaee5e5`; both `workspace-checks` and `contracts-and-integration`, including browser acceptance, passed. This is PR-head CI evidence, not a separately observed post-merge Actions run.
+- `git diff --stat 193391f HEAD` was empty: the merged checkout has the same tree as that PR head. Fresh checks below were run on the merged checkout.
+
+### Fresh checks
+
+| Command | Observed result |
+| --- | --- |
+| `pnpm typecheck` | Exit 0 for both workspaces. |
+| `pnpm lint` | Exit 0. |
+| `pnpm test` | Exit 0; 7 files, 136 tests passed. |
+| `pnpm build` | Exit 0; production build generated `/`, `/_not-found`, `/api/explain` and `/lookup`. Existing local environment configuration was present; no secret values were read or reported. |
+| WSL `forge fmt --check`, `forge build --build-info`, `forge test -vv` | Initial sandbox call failed with `Wsl/E_ACCESSDENIED`. The permission-enabled rerun exited 0; 16 tests passed across 3 suites, including 256 fuzz cases. Build artifacts were already current. Existing golden-fixture lint warnings remain. |
+| `pnpm test:integration` with WSL access | Exit 0; all 13 Anvil tests passed. |
+| `pnpm test:browser` with WSL access | Exit 0; M5/M6 Chromium scenarios passed, including template score 35, stale AI response rejection, invalid-output fallback, canonical export, wallet/network/snapshot guards, receipt recovery/replacement, import races, replay and pruned-history handling. The filtered runner reports 1 passed / 12 skipped; the full 13-test integration suite passed separately above. All publication transactions were on the ephemeral test node. |
+| `git diff --check` | Exit 0 after the documentation edits. |
+
+### Findings and prepared next work
+
+- **M0–M6 local outcome is implemented; M7 is open.** M6 uses deterministic templates and a local mock provider. No live Gemini adapter or provider validation is present.
+- **Fuji publication needs implementation work.** `walletContext` requires local mode/loopback/Anvil, and the browser independently requires a loopback hostname for publication and receipt recovery. Changing the RPC or hosting the build alone cannot deliver Fuji publication.
+- **Deployable demo examples are still needed.** Existing golden fixtures use selector stubs and Anvil-initialized owner/proxy storage. Preserve them as locked controls and build separate examples with real constructor/initializer paths.
+- **Manual/public evidence remains missing from the repo.** No real Core extension smoke result, Fuji registry/fixture deployment, verified source, hosted app or submission media is recorded. Historical RPC samples were not rerun and remain per-request observations.
+- Updated the current status in README and PLAN, linked Phase 5 to [M7_PREPARATION_PROMPT.md](M7_PREPARATION_PROMPT.md), and prepared that bounded implementation prompt with code-specific gaps, acceptance checks, deployment/runbook deliverables and an explicit stopping point.
+- No M7 implementation, live Fuji/external provider call, real-wallet action, public deployment/publication, push or merge was performed in this review. This is a readiness review, not an exhaustive new security audit. The next proposed request is M7 local delivery preparation; external delivery remains separately authorized.
+
+## 2026-11-14 — Antigravity M7 execution prompt prepared
+
+User requested a complete prompt for Antigravity to read and execute. Added [M7_ANTIGRAVITY_PROMPT.md](M7_ANTIGRAVITY_PROMPT.md) and linked it from the readiness document and Phase 5. The prompt covers actual-base discovery and preservation of uncommitted handoff edits, explicit local/Fuji publication, receipt invariants, separate deployable examples, keystore deployment preparation, hosting/runbook/demo artifacts, focused regressions, runnable checks and the final Vietnamese handoff.
+
+The task delegated by the prompt is M7 local preparation only. Public actions, real wallets and live AI remain outside that scope. No application changes or M7 execution were performed while writing it. The previous review's test results remain historical baseline evidence; the future executor must rerun the relevant checks after implementation. Documentation checks: `git diff --check` exited 0; a local Markdown-link check inspected 28 relative links across the prompt, readiness document, phase prompts and progress log with no missing targets. Application tests were not rerun for this documentation-only handoff.
+
+## 2026-11-14 — M7 delivery preparation complete (local handoff; external actions remain user-run)
+
+- **Base checkout**: `m7/Fuji-deployment` at `76857b144122b5266eb3dac5ddadc844ff2fdf9c` (`76857b1`, ancestor check passed), preserving pre-existing uncommitted handoff edits in `README.md`, `docs/PHASE_PROMPTS.md`, `docs/PLAN.md`, `docs/PROGRESS.md`, `docs/M7_ANTIGRAVITY_PROMPT.md`, and `docs/M7_PREPARATION_PROMPT.md`.
+- **Key implementation & documentation changes**:
+  1. **Explicit `local` / `fuji` config & origin/network guards**: Added [publication-config.ts](../apps/web/lib/publication-config.ts) and [server-config.ts](../apps/web/lib/server-config.ts); wired [actions.ts](../apps/web/app/actions.ts), [receipt.ts](../apps/web/lib/receipt.ts), [layout.tsx](../apps/web/app/layout.tsx), [shared.tsx](../apps/web/app/shared.tsx), [report.tsx](../apps/web/app/report.tsx), and [publish.tsx](../apps/web/app/publish.tsx). `local` mode requires loopback RPC + Anvil `web3_clientVersion` + loopback origin; `fuji` mode requires non-loopback `https://` RPC + chain ID `43113` + pinned `registryRuntimeHash` + `AVAGUARD_APP_ORIGIN` (or `https:`/loopback); invalid or unset `AVAGUARD_ENV` / `REGISTRY_ADDRESS` disables wallet publication/lookup while keeping read-only scanning available when `FUJI_RPC_URL` is valid. Added explicit user-clicked **"Switch wallet to 43113"** button (`wallet_switchEthereumChain` + `fuji`-only `wallet_addEthereumChain` fallback on code `4902`).
+  2. **Reproducible registry & deployable demo contracts**: Added [verify-registry-identity.mjs](../scripts/verify-registry-identity.mjs), [DemoTokens.sol](../packages/contracts/src/DemoTokens.sol) (`DemoBaselineToken`, `DemoMintPauseToken` using `ERC20Pausable`, `DemoUpgradeableToken` with constructor `_disableInitializers()` + ERC-7201 slot `0x4496e5ce33b8ec396139effb46b35a9b5adcd4c1de76653e832c9cd515b29600`, `DemoTokenProxy`), [DemoTokens.t.sol](../packages/contracts/test/DemoTokens.t.sol), [DeployDemo.s.sol](../packages/contracts/script/DeployDemo.s.sol) (reusing `DecoyConstantToken` without altering `GoldenFixtures.sol`), and [fuji-deploy.sh](../scripts/fuji-deploy.sh) (dry-run default, opt-in `--broadcast --keystore`, `--readback`). Preserved `scripts/local-demo.sh`.
+  3. **Tests & docs**: Added [config.test.ts](../apps/web/test/config.test.ts) (8 tests), [fuji-rpc-preload.mjs](../apps/web/test/fuji-rpc-preload.mjs), simulated non-loopback Fuji origin scenario (`http://avaguard-fuji.test:31847`) in [browser.mjs](../apps/web/test/browser.mjs), and real-transaction Anvil demo deployment + scan + publish + replay test in [anvil.integration.test.ts](../packages/analyzer/test/anvil.integration.test.ts). Updated [.env.example](../.env.example), [THREAT_MODEL.md](THREAT_MODEL.md), [SOURCES.md](SOURCES.md), [README.md](../README.md), and added [M7_DELIVERY.md](M7_DELIVERY.md) & [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+- **Observed demo contract reports on local Anvil (`chainId = 43113`)**:
+  - `DemoBaselineToken` (`AGBASE`): `0 / 100 · Few signals` (`["R-SOURCE-UNKNOWN"]`)
+  - `DemoMintPauseToken` (`AGMP`): `45 / 100 · Some signals` (`["R-MINT", "R-OWNER-EOA", "R-PAUSE", "R-SOURCE-UNKNOWN"]`)
+  - `DemoTokenProxy` (`AGUP`, ERC-1967 -> `DemoUpgradeableToken`): `60 / 100 · Many signals` (`["R-MINT", "R-OWNER-EOA", "R-PROXY", "R-SOURCE-UNKNOWN"]`)
+  - `DecoyConstantToken` (negative control): `0 / 100 · Few signals` (`["R-SOURCE-UNKNOWN"]`)
+- **Verified checks**:
+  - `pnpm typecheck && pnpm lint && pnpm test`: exit 0 (`tsc --noEmit` across workspaces, `eslint .`, `vitest`: 8 files, 144 passed).
+  - `wsl ... forge fmt --check && forge build --build-info && forge test -vv`: exit 0 (4 suites, 20 passed, 0 failed, 0 skipped, including 256 fuzz runs on `ReadProbeFixtureTest`).
+  - `node scripts/verify-registry-identity.mjs`: exit 0 (`solc=0.8.30+commit.73712a01`, `evm=cancun`, `optimizer={"enabled":true,"runs":200}`, `abiEntries=27`, `runtimeHash=0x4fae2a424c444bfdc1c89924898d33a63b25b30a5ece9ed3bb4c1fbe96397b38`).
+  - `bash -n scripts/fuji-deploy.sh` + validation/dry-run smoke against ephemeral local Anvil `--chain-id 43113`: exit 0 (missing-owner, loopback-without-allow-local, broadcast-without-keystore rejected cleanly; `DeployDemoScript` simulation succeeded).
+  - `pnpm test:integration`: exit 0 (15/15 passed in `packages/analyzer/test/anvil.integration.test.ts`, sequentially).
+  - `pnpm build`: exit 0 (`next build` compiled `/` and `/lookup` cleanly).
+  - `pnpm test:browser`: exit 0 (`1 passed | 14 skipped` in Vitest filtered runner; executed both `local` Anvil and simulated non-loopback `fuji` origin flows sequentially in Chromium).
+- **Remaining user-run external work (not executed in M7 preparation)**:
+  - Create/import local Foundry keystore, obtain Fuji faucet AVAX, run `scripts/fuji-deploy.sh --broadcast`, and execute `--readback`.
+  - Verify all 6 deployed contracts on Fuji explorer (`forge verify-contract` against Routescan/Snowscan/Snowtrace).
+  - Perform live Core/MetaMask browser wallet smoke checks, deploy `apps/web` (`AVAGUARD_ENV=fuji`) to HTTPS host, export & attach canonical Fuji JSON bundles, and record final demo video/slides & submission links in [M7_DELIVERY.md](M7_DELIVERY.md) & [DEMO_SCRIPT.md](DEMO_SCRIPT.md).

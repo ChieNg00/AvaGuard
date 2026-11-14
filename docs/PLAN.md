@@ -1,6 +1,6 @@
 # Implementation plan
 
-M0 through M4 have recorded local verification. M5 implementation and current verification are recorded in PROGRESS.md. A separate sampled historical RPC probe succeeded; see RPC_HISTORY_CHECK.md. Keep capacity realistic for two people; extra hours are contingency, not guaranteed scope.
+As reviewed on 2026-11-14, M0 through M6 have recorded local verification. M6 PR #7 is merged into main at `76857b1`; its final PR head `193391f` passed both CI jobs. Fresh merged-checkout checks and limitations are recorded in PROGRESS.md. M6 covers templates and mocked AI behavior, not a live provider. M7 delivery is not complete. A separate sampled historical RPC probe succeeded; see RPC_HISTORY_CHECK.md. Keep capacity realistic for two people; extra hours are contingency, not guaranteed scope.
 
 | Milestone | Outcome | Completion evidence |
 | --- | --- | --- |
@@ -12,6 +12,15 @@ M0 through M4 have recorded local verification. M5 implementation and current ve
 | M5 Vertical slice | Scan, report, publication UI and lookup | Local end-to-end flow and truthful incomplete/stale/error states |
 | M6 AI | Optional explanation with deterministic fallback | Same evidence/score with AI on/off; outage and injection tests |
 | M7 Delivery | Authorized Fuji deployment, hosted demo and submission package | Real addresses, verified source, accessible app/report links, video and slides |
+
+## Next bounded task — proposed M7 preparation
+
+Use [M7_PREPARATION_PROMPT.md](M7_PREPARATION_PROMPT.md) for the next implementation request. This review prepared the task; it did not implement or authorize public delivery.
+
+1. Add an explicit Fuji publication configuration while preserving the local mode, registry/snapshot checks, live attester checks and receipt recovery. Both server and browser currently enforce loopback-only publication.
+2. Add deployable demo contracts and local tests without changing the locked golden fixtures. Existing scoring fixtures rely on Anvil storage initialization and contain selector stubs.
+3. Prepare a keystore-based deployment/source-verification runbook, hosting configuration, report retrieval instructions and a 2–3 minute demo script. Verify commands against current official documentation at implementation time.
+4. Pass local checks and leave the changes for review. Real Core wallet testing, Fuji transactions, source publication and hosting follow separate explicit instructions. A live AI adapter is an optional separate task; the template flow remains usable.
 
 ## Tentative calendar
 

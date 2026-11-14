@@ -15,6 +15,7 @@ import {
 import { createPublicClient, getAddress, http, keccak256 } from "viem";
 import { getExplainRuntime } from "../lib/explain-server";
 import { registryAbi as abi, registryRuntimeHash } from "../lib/registry-abi";
+import { getServerConfig } from "../lib/server-config";
 
 class DisplayError extends Error {}
 async function safely<T>(action: () => Promise<T>) {
@@ -30,10 +31,9 @@ async function safely<T>(action: () => Promise<T>) {
     } as const;
   }
 }
-function endpoint() {
-  const value = process.env.FUJI_RPC_URL;
-  if (!value) throw new DisplayError("Read RPC is unconfigured.");
-  return new URL(value);
+function endpoint(config = getServerConfig()) {
+  if (!config.rpc.ok) throw new DisplayError(config.rpc.error);
+  return config.rpc.url;
 }
 function address(value: string) {
   const result = addressSchema.safeParse(value.toLowerCase());
@@ -43,25 +43,36 @@ function address(value: string) {
     );
   return getAddress(result.data);
 }
-async function registry() {
-  if (!process.env.REGISTRY_ADDRESS)
-    throw new DisplayError("Registry is unconfigured.");
-  const target = address(process.env.REGISTRY_ADDRESS);
+async function registry(config = getServerConfig()) {
+  const url = endpoint(config);
+  if (!config.registry.ok) throw new DisplayError(config.registry.error);
+  const target = config.registry.address;
   const client = createPublicClient({
-    transport: http(endpoint().href, {
+    transport: http(url.href, {
       timeout: 5000,
       retryCount: 0,
       fetchOptions: { cache: "no-store", redirect: "error" },
     }),
   });
-  if ((await client.getChainId()) !== 43113)
+  const [chainId, code] = await Promise.all([
+    client.getChainId(),
+    client.getCode({ address: target }),
+  ]);
+  if (chainId !== 43113)
     throw new DisplayError("Reader is on the wrong network.");
-  return { client, config: { address: target, abi } };
+  if (!code || keccak256(code) !== registryRuntimeHash)
+    throw new DisplayError("Configured registry runtime mismatch.");
+  return {
+    client,
+    config: { address: target, abi },
+    codehash: keccak256(code),
+  };
 }
 export async function scan(target: string) {
   return safely(async () => {
+    const serverConfig = getServerConfig();
     const result = buildReport(
-      await collectEvidence(createHttpTransport(endpoint().href), {
+      await collectEvidence(createHttpTransport(endpoint(serverConfig).href), {
         address: address(target).toLowerCase(),
       }),
     );
@@ -116,11 +127,13 @@ export async function scan(target: string) {
         reportHash: result.reportHash,
         explanation,
         aiEnabled,
+        publication: serverConfig.publication,
       } as const;
     }
     return {
       ...result,
       explanation: buildIncompleteExplanation(result),
+      publication: serverConfig.publication,
     } as const;
   });
 }
@@ -135,29 +148,33 @@ export async function replay(input: unknown, hash: string) {
 }
 export async function walletContext(block: string, hash: string) {
   return safely(async () => {
-    const url = endpoint();
-    if (
-      process.env.AVAGUARD_ENV !== "local" ||
-      url.protocol !== "http:" ||
-      url.hostname !== "127.0.0.1"
-    )
-      throw new DisplayError(
-        "Publication requires a configured loopback Anvil environment.",
-      );
-    const { client, config } = await registry();
-    const [snapshot, code, version] = await Promise.all([
-      client.getBlock({ blockNumber: BigInt(decimalSchema.parse(block)) }),
-      client.getCode({ address: config.address }),
-      client.request({ method: "web3_clientVersion" }),
-    ]);
-    if (
-      !/anvil/i.test(version) ||
-      !code ||
-      keccak256(code) !== registryRuntimeHash ||
-      snapshot.hash !== hashSchema.parse(hash)
-    )
-      throw new DisplayError("Reader registry or snapshot mismatch.");
-    return { address: config.address, codehash: keccak256(code) };
+    const serverConfig = getServerConfig();
+    if (!serverConfig.publication.enabled) {
+      throw new DisplayError(serverConfig.publication.reason);
+    }
+    const { client, config, codehash } = await registry(serverConfig);
+    const snapshotPromise = client.getBlock({
+      blockNumber: BigInt(decimalSchema.parse(block)),
+    });
+    if (serverConfig.publication.mode === "local") {
+      const [snapshot, version] = await Promise.all([
+        snapshotPromise,
+        client.request({ method: "web3_clientVersion" }),
+      ]);
+      if (!/anvil/i.test(version) || snapshot.hash !== hashSchema.parse(hash)) {
+        throw new DisplayError("Reader registry or snapshot mismatch.");
+      }
+    } else {
+      const snapshot = await snapshotPromise;
+      if (snapshot.hash !== hashSchema.parse(hash)) {
+        throw new DisplayError("Reader registry or snapshot mismatch.");
+      }
+    }
+    return {
+      address: config.address,
+      codehash,
+      mode: serverConfig.publication.mode,
+    };
   });
 }
 export async function lookup(value: string, index?: string) {

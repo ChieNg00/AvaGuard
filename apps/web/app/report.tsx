@@ -6,6 +6,7 @@ import {
   type ReportBody,
   type ReportExplanation,
 } from "@avaguard/analyzer";
+import type { PublicPublicationConfig } from "../lib/publication-config";
 import { Publish } from "./publish";
 
 export function Coverage({ coverage }: Pick<ReportBody, "coverage">) {
@@ -110,12 +111,14 @@ export function Report({
   reportHash,
   initialExplanation,
   aiEnabled,
+  publicationConfig,
 }: {
   body: ReportBody;
   band: string;
   reportHash: string;
   initialExplanation: ReportExplanation;
   aiEnabled: boolean;
+  publicationConfig: PublicPublicationConfig;
 }) {
   const [explanation, setExplanation] =
     useState<ReportExplanation>(initialExplanation);
@@ -234,7 +237,11 @@ export function Report({
       <p>
         <button onClick={download}>Export canonical JSON</button>
       </p>
-      <Publish key={body.blockHash + body.address} body={body} />
+      <Publish
+        key={body.blockHash + body.address}
+        body={body}
+        publicationConfig={publicationConfig}
+      />
     </section>
   );
 }
