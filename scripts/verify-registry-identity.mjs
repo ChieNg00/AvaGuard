@@ -107,6 +107,7 @@ export async function verifyOnChainRegistry(
   rpcUrl,
   registryAddress,
   expectedRuntimeHash,
+  options = {},
 ) {
   const client = createPublicClient({
     transport: http(rpcUrl, {
@@ -116,15 +117,38 @@ export async function verifyOnChainRegistry(
     }),
   });
   const address = getAddress(registryAddress);
-  const [chainId, code] = await Promise.all([
-    client.getChainId(),
-    client.getCode({ address }),
-  ]);
+  const chainId = await client.getChainId();
   if (chainId !== 43113) {
     throw new Error(`Expected chain ID 43113, got ${chainId}.`);
   }
+
+  const block =
+    options.blockNumber !== undefined
+      ? await client.getBlock({ blockNumber: BigInt(options.blockNumber) })
+      : await client.getBlock({ blockTag: "latest" });
+  if (!block || block.number === null || !block.hash) {
+    throw new Error("RPC returned an incomplete block header for snapshot binding.");
+  }
+  if (
+    options.blockNumber !== undefined &&
+    block.number !== BigInt(options.blockNumber)
+  ) {
+    throw new Error(
+      `Block number mismatch: expected ${options.blockNumber}, got ${block.number}.`,
+    );
+  }
+  if (
+    options.expectedBlockHash &&
+    block.hash.toLowerCase() !== options.expectedBlockHash.toLowerCase()
+  ) {
+    throw new Error(
+      `Block hash mismatch at block ${block.number}: expected ${options.expectedBlockHash}, got ${block.hash}.`,
+    );
+  }
+
+  const code = await client.getCode({ address, blockNumber: block.number });
   if (!code || code === "0x") {
-    throw new Error(`No bytecode deployed at ${address}.`);
+    throw new Error(`No bytecode deployed at ${address} at block ${block.number}.`);
   }
   const onChainHash = keccak256(code).toLowerCase();
   if (onChainHash !== expectedRuntimeHash.toLowerCase()) {
@@ -132,14 +156,36 @@ export async function verifyOnChainRegistry(
       `On-chain runtime hash ${onChainHash} does not match pinned RiskRegistry ${expectedRuntimeHash}.`,
     );
   }
-  return { chainId, address, onChainHash };
+
+  const confirmBlock = await client.getBlock({ blockNumber: block.number });
+  if (
+    !confirmBlock?.hash ||
+    confirmBlock.hash.toLowerCase() !== block.hash.toLowerCase()
+  ) {
+    throw new Error(
+      `Snapshot block ${block.number} header hash changed mid-read (${block.hash} -> ${confirmBlock?.hash ?? "missing"}).`,
+    );
+  }
+
+  return {
+    chainId,
+    address,
+    onChainHash,
+    blockNumber: block.number.toString(),
+    blockHash: block.hash.toLowerCase(),
+  };
 }
 
 function parseCliArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
-    if (key === "--rpc-url" || key === "--registry") {
+    if (
+      key === "--rpc-url" ||
+      key === "--registry" ||
+      key === "--block" ||
+      key === "--expected-block-hash"
+    ) {
       const value = argv[++i];
       if (!value) throw new Error(`Missing value for ${key}`);
       args[key.slice(2)] = value;
@@ -160,17 +206,38 @@ if (isEntrypoint) {
   console.log(
     `Local RiskRegistry artifact verified: solc=${local.compilerVersion}, evm=${local.evmVersion}, optimizer=${JSON.stringify(local.optimizer)}, abiEntries=${local.abiEntries}, runtimeHash=${local.runtimeHash}`,
   );
-  if (opts["rpc-url"] || opts.registry) {
+  if (
+    opts["rpc-url"] ||
+    opts.registry ||
+    opts.block ||
+    opts["expected-block-hash"]
+  ) {
     if (!opts["rpc-url"] || !opts.registry) {
       throw new Error("Pass both --rpc-url and --registry for on-chain checks.");
+    }
+    if (opts.block !== undefined && !/^[0-9]+$/.test(opts.block)) {
+      throw new Error(`Invalid --block value "${opts.block}"; expected unsigned decimal block number.`);
+    }
+    if (
+      opts["expected-block-hash"] !== undefined &&
+      !/^0x[0-9a-fA-F]{64}$/.test(opts["expected-block-hash"])
+    ) {
+      throw new Error(`Invalid --expected-block-hash value "${opts["expected-block-hash"]}".`);
+    }
+    if (opts["expected-block-hash"] && !opts.block) {
+      throw new Error("--expected-block-hash requires --block.");
     }
     const chain = await verifyOnChainRegistry(
       opts["rpc-url"],
       opts.registry,
       local.runtimeHash,
+      {
+        blockNumber: opts.block,
+        expectedBlockHash: opts["expected-block-hash"],
+      },
     );
     console.log(
-      `On-chain RiskRegistry verified: chainId=${chain.chainId}, address=${chain.address}, runtimeHash=${chain.onChainHash}`,
+      `On-chain RiskRegistry verified: chainId=${chain.chainId}, block=${chain.blockNumber}, blockHash=${chain.blockHash}, address=${chain.address}, runtimeHash=${chain.onChainHash}`,
     );
   }
 }

@@ -138,8 +138,16 @@ verify_script_path() {
 resolve_keystore_path() {
   local raw="$1"
   local expanded="$raw"
-  if [[ "$expanded" == "~/"* ]]; then
-    expanded="$HOME/${expanded#~/}"
+  if [[ "$expanded" == "~" ]]; then
+    [[ -n "${HOME:-}" ]] || die "HOME must be set to expand '~' keystore path"
+    expanded="$HOME"
+  elif [[ "$expanded" == "~/"* ]]; then
+    [[ -n "${HOME:-}" ]] || die "HOME must be set to expand '~/...' keystore path"
+    if [[ "$HOME" == "/" ]]; then
+      expanded="/${expanded:2}"
+    else
+      expanded="${HOME%/}/${expanded:2}"
+    fi
   fi
   local abs="$expanded"
   if [[ "$abs" != /* ]]; then
@@ -154,7 +162,10 @@ resolve_keystore_path() {
     normalized="$abs"
   fi
   if [[ ! -e "$normalized" ]]; then
-    die "Keystore path not found: '$normalized' (from '$raw'). If '$raw' is a named keystore in ~/.foundry/keystores, pass --account '$raw' instead of --keystore."
+    if [[ "$raw" != */* && "$raw" != ~* && "$raw" != .* ]]; then
+      die "Keystore path not found: '$normalized' (from '$raw'). If '$raw' is a named keystore in ~/.foundry/keystores, pass --account '$raw' instead of --keystore."
+    fi
+    die "Keystore path not found: '$normalized' (from '$raw')."
   fi
   echo "$normalized"
 }

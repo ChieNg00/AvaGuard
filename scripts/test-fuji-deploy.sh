@@ -543,6 +543,57 @@ else
   cat "$STUB_ARGS_FILE" | sed 's/^/  | /' >&2
 fi
 
+# 2b. Quoted ~/ path in --keystore resolves to $HOME/... (never $HOME/~/...)
+FAKE_HOME="$TMP_DIR/fake-home"
+mkdir -p "$FAKE_HOME/.foundry/keystores"
+echo "{}" >"$FAKE_HOME/.foundry/keystores/fuji-deployer"
+EXPECTED_TILDE_KS="$FAKE_HOME/.foundry/keystores/fuji-deployer"
+
+: >"$STUB_ARGS_FILE"
+assert_ok "R3: quoted ~/ path in --keystore expands relative to HOME" \
+  env -u FOUNDRY_KEYSTORE -u FOUNDRY_ACCOUNT HOME="$FAKE_HOME" PATH="$STUB_BIN:$PATH" \
+  bash "$SCRIPT_UNDER_TEST" --allow-local --skip-build --rpc-url "$RPC_URL" --owner "$OWNER_ADDR" --attester "$ATTESTER_ADDR" --keystore '~/.foundry/keystores/fuji-deployer' --broadcast
+
+if grep -qx -- "$EXPECTED_TILDE_KS" "$STUB_ARGS_FILE" && ! grep -q '~' "$STUB_ARGS_FILE"; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+  echo "[PASS] R3: stub forge received expanded HOME keystore path $EXPECTED_TILDE_KS"
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "[FAIL] R3: expected '$EXPECTED_TILDE_KS' in forge args, got:" >&2
+  cat "$STUB_ARGS_FILE" | sed 's/^/  | /' >&2
+fi
+
+# 2c. ~/ path in FOUNDRY_KEYSTORE env var expands cleanly
+: >"$STUB_ARGS_FILE"
+assert_ok "R3: ~/ path in FOUNDRY_KEYSTORE env var expands relative to HOME" \
+  env -u FOUNDRY_ACCOUNT HOME="$FAKE_HOME" PATH="$STUB_BIN:$PATH" FOUNDRY_KEYSTORE='~/.foundry/keystores/fuji-deployer' \
+  bash "$SCRIPT_UNDER_TEST" --allow-local --skip-build --rpc-url "$RPC_URL" --owner "$OWNER_ADDR" --attester "$ATTESTER_ADDR" --broadcast
+
+if grep -qx -- "$EXPECTED_TILDE_KS" "$STUB_ARGS_FILE" && ! grep -q '~' "$STUB_ARGS_FILE"; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+  echo "[PASS] R3: FOUNDRY_KEYSTORE='~/...' forwarded expanded path $EXPECTED_TILDE_KS"
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "[FAIL] R3: expected '$EXPECTED_TILDE_KS' from FOUNDRY_KEYSTORE, got:" >&2
+  cat "$STUB_ARGS_FILE" | sed 's/^/  | /' >&2
+fi
+
+# 2d. Missing ~/ keystore fails nonzero with clean HOME-expanded path (no $HOME/~/...)
+set +e
+MISSING_TILDE_OUT="$(
+  env -u FOUNDRY_KEYSTORE -u FOUNDRY_ACCOUNT HOME="$FAKE_HOME" PATH="$STUB_BIN:$PATH" \
+    bash "$SCRIPT_UNDER_TEST" --allow-local --skip-build --rpc-url "$RPC_URL" --owner "$OWNER_ADDR" --attester "$ATTESTER_ADDR" --keystore '~/.foundry/keystores/missing.json' --broadcast 2>&1
+)"
+MISSING_TILDE_RC=$?
+set -e
+if [[ "$MISSING_TILDE_RC" -ne 0 ]] && grep -Fq "$FAKE_HOME/.foundry/keystores/missing.json" <<<"$MISSING_TILDE_OUT" && ! grep -Fq '/~/' <<<"$MISSING_TILDE_OUT"; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+  echo "[PASS] R3: missing ~/ keystore fails nonzero with clean expanded HOME path"
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "[FAIL] R3: unexpected missing ~/ keystore result (rc=$MISSING_TILDE_RC): $MISSING_TILDE_OUT" >&2
+fi
+
 # 3. Conflict: both --account and --keystore rejected
 assert_fails_matching "R3: rejects passing both --account and --keystore" \
   "both|--account.*--keystore|conflict" \
@@ -585,6 +636,15 @@ if [[ "$STAGE_LINE" == 100755* ]]; then
 else
   FAIL_COUNT=$((FAIL_COUNT + 1))
   echo "[FAIL] R4: expected Git mode 100755 for scripts/fuji-deploy.sh, got: $STAGE_LINE" >&2
+fi
+
+TEST_STAGE_LINE="$(git -C "$ROOT_DIR" ls-files --stage -- scripts/test-fuji-deploy.sh)"
+if [[ "$TEST_STAGE_LINE" == 100755* ]]; then
+  PASS_COUNT=$((PASS_COUNT + 1))
+  echo "[PASS] R4: git ls-files --stage shows 100755 for scripts/test-fuji-deploy.sh"
+else
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  echo "[FAIL] R4: expected Git mode 100755 for scripts/test-fuji-deploy.sh, got: $TEST_STAGE_LINE" >&2
 fi
 
 # Simulate clean Linux extraction using exact staged Git mode on native Linux /tmp

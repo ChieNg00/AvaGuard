@@ -77,6 +77,13 @@ jobs:
         working-directory: packages/contracts
         run: forge test -vv
 
+      - name: Run deployment and readback script checks
+        run: |
+          bash -n scripts/fuji-deploy.sh
+          bash -n scripts/test-fuji-deploy.sh
+          node scripts/verify-registry-identity.mjs
+          bash scripts/test-fuji-deploy.sh
+
       - name: Run Anvil integration tests
         run: pnpm test:integration
 

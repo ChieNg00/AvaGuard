@@ -10,7 +10,7 @@ Target runtime: **2m 30s** (max 3m 00s). Show observed behavior strictly as risk
 
 ### Beat 2 — Evidence-Bound Explanation & Contrast Cases (~35s)
 - **Screen**: Point to the findings (`R-MINT`, `R-OWNER-EOA`, `R-PAUSE`, `R-SOURCE-UNKNOWN`) and their evidence IDs. Quickly scan `DemoBaselineToken` (`0 / 100 · Few signals`) and `DecoyConstantToken` (`0 / 100 · Few signals`), then scan `DemoTokenProxy` (`AGUP`, `60 / 100 · Many signals · erc1967`).
-- **Narration**: *"Every finding cites concrete evidence IDs rather than raw guesses. An ordinary token (`DemoBaselineToken`) and even a decoy contract (`DecoyConstantToken`) that exposes `mint`/`blacklist`/`setFee` selectors backed by pure constants both score `0` without false alarms, while `DemoTokenProxy` resolves its ERC-1967 implementation slot and reaches `60 / 100 · Many signals`."*
+- **Narration**: *"Every finding cites concrete evidence IDs rather than raw guesses. An ordinary token (`DemoBaselineToken`) scores `0`, and a decoy contract (`DecoyConstantToken`) with selector constant bytes (`mint(address,uint256)`) and no supported dispatcher evidence also stays `0 / 100 · Few signals` (absence of dispatcher signals is not proof that matching functions are harmless), while `DemoTokenProxy` resolves its ERC-1967 implementation slot and reaches `60 / 100 · Many signals`."*
 
 ### Beat 3 — Wallet Network Guard & Authorized Attester Publication (~35s)
 - **Screen**: Export canonical JSON (`Export canonical JSON`), then click **Check wallet** on a non-Fuji chain (`0x1`) -> show **Switch wallet to 43113** button -> click it explicitly -> click **Check wallet** with authorized attester -> click **Publish** and show confirmed tx hash.
@@ -39,9 +39,9 @@ Use these prepared explanations if a real network condition occurs during a live
 
 ## 3. Concise Presentation Outline (5 Slides)
 
-1. **Problem**: Token checks fail silently when mixing blocks, mistaking selector decoys for real privilege, or trusting unverified summaries without snapshot provenance.
+1. **Problem**: Token checks fail cleanly when mixing blocks, treating isolated selector constants without supported dispatcher evidence as confirmed privileged functions, or trusting unverified summaries without snapshot provenance.
 2. **Architecture**: Deterministic `@avaguard/analyzer` (pinned single-block collector + ERC-1967/beacon/minimal-proxy resolution + ruleset `v1`) -> `RiskRegistry` on Avalanche (`43113`) -> Next.js web app + client wallet signing.
-3. **Showcase Contracts**: Four deployed demo targets (`0`, `45`, `60`, `0` decoy) demonstrating coverage, proxy resolution, and false-positive resistance.
+3. **Showcase Contracts**: Four deployed demo targets (`0`, `45`, `60`, `0` decoy) demonstrating coverage, proxy resolution, and selector-constant false-positive resistance (while distinguishing lack of dispatcher evidence from safety proof).
 4. **Trust Boundaries**: Zero server keys, config fail-closed (`local` vs `fuji`), `registryRuntimeHash` pinning, canonical JSON `keccak256` commitment, and AI constrained to validated evidence IDs.
 5. **Verification & Next Steps**: Automated unit/Foundry/Anvil/Playwright suite + reproducible Foundry deployment & verification runbook (`docs/M7_DELIVERY.md`).
 
