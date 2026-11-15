@@ -4,7 +4,9 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import {
   encodeFunctionData,
@@ -108,6 +110,10 @@ async function installProvider(targetPage, initialAccount) {
       holdReceipt: false,
       lastTxHash: null,
       lastReplacementHash: null,
+      switchCount: 0,
+      addCount: 0,
+      lastAddedChain: null,
+      simulateChainMissing4902: false,
     };
     window.emitWallet = (event, data) => {
       for (const fn of [...(listeners.get(event) ?? [])]) fn(data);
@@ -135,6 +141,25 @@ async function installProvider(targetPage, initialAccount) {
         const s = window.walletState;
         if (["eth_accounts", "eth_requestAccounts"].includes(call.method))
           return [s.activeAccount];
+        if (call.method === "wallet_switchEthereumChain") {
+          s.switchCount++;
+          if (s.simulateChainMissing4902) {
+            throw Object.assign(Error("Unrecognized chain ID"), { code: 4902 });
+          }
+          if (call.params?.[0]?.chainId?.toLowerCase() === "0xa869") {
+            s.mode = "ok";
+            window.emitWallet("chainChanged", "0xa869");
+          }
+          return null;
+        }
+        if (call.method === "wallet_addEthereumChain") {
+          s.addCount++;
+          s.lastAddedChain = call.params?.[0] ?? null;
+          s.simulateChainMissing4902 = false;
+          s.mode = "ok";
+          window.emitWallet("chainChanged", "0xa869");
+          return null;
+        }
         if (s.mode === "wrong" && call.method === "eth_chainId") return "0x1";
         if (call.method === "eth_sendTransaction") {
           if (s.mode === "reject")
@@ -1378,8 +1403,188 @@ try {
     explainMock.close();
   }
 
+  // Simulated non-loopback Fuji mode browser regression (routes https://fuji-rpc.test via test preload to Anvil).
+  const preloadUrl = pathToFileURL(
+    resolve("apps/web/test/fuji-rpc-preload.mjs"),
+  ).href;
+  const fujiServer = spawn(
+    process.execPath,
+    [
+      "node_modules/next/dist/bin/next",
+      "start",
+      "-H",
+      "127.0.0.1",
+      "-p",
+      "31847",
+    ],
+    {
+      cwd: "apps/web",
+      windowsHide: true,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        AVAGUARD_ENV: "fuji",
+        FUJI_RPC_URL: "https://fuji-rpc.test/ext/bc/C/rpc",
+        REGISTRY_ADDRESS: registry,
+        AVAGUARD_APP_ORIGIN: "http://avaguard-fuji.test:31847",
+        AVAGUARD_TEST_LOCAL_RPC: "http://127.0.0.1:" + proxy.address().port,
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${preloadUrl}`]
+          .filter(Boolean)
+          .join(" "),
+      },
+    },
+  );
+  const fujiClosed = once(fujiServer, "exit");
+  let fujiBrowser;
+  try {
+    const fujiProbeUrl = "http://127.0.0.1:31847";
+    const fujiOriginUrl = "http://avaguard-fuji.test:31847";
+    for (let i = 0; i < 120; i++) {
+      if (fujiServer.exitCode !== null)
+        throw Error("Simulated Fuji Next server exited");
+      if (
+        await fetch(fujiProbeUrl)
+          .then((r) => r.ok)
+          .catch(() => false)
+      )
+        break;
+      await delay(250);
+    }
+
+    fujiBrowser = await chromium.launch({
+      args: ["--host-resolver-rules=MAP avaguard-fuji.test 127.0.0.1"],
+    });
+    const fujiPage = await fujiBrowser.newPage();
+    activePage = fujiPage;
+    fujiPage.setDefaultTimeout(12000);
+
+    // 1. Mismatched origin (127.0.0.1) still allows read-only scan, while origin guard blocks Fuji publication.
+    await fujiPage.goto(fujiProbeUrl);
+    await fujiPage.getByText("Avalanche Fuji · 43113").waitFor();
+    await fujiPage.getByLabel("Target contract address").fill(fixture);
+    await fujiPage.getByRole("button", { name: "Scan contract" }).click();
+    await fujiPage.getByText("35 / 100 · Some signals").waitFor();
+    await fujiPage
+      .getByText(/Fuji publication is restricted to the configured origin/)
+      .waitFor();
+
+    // 2. Intended non-loopback test origin enables explicit Fuji wallet checks, network switch, publish, and replay.
+    await anvilRpc("evm_mine", []);
+    const fujiBlock = parseInt(await anvilRpc("eth_blockNumber", []), 16);
+    await fujiPage.goto(fujiOriginUrl);
+    await fujiPage.getByText("Avalanche Fuji · 43113").waitFor();
+    await fujiPage.getByLabel("Target contract address").fill(fixture);
+    await fujiPage.getByRole("button", { name: "Scan contract" }).click();
+    await fujiPage.getByText("35 / 100 · Some signals").waitFor();
+    await fujiPage.getByText("Chain 43113 · Block " + fujiBlock).waitFor();
+
+    const fujiDl = fujiPage.waitForEvent("download");
+    await fujiPage.getByText("Export canonical JSON").click();
+    const fujiJson = await readFile(await (await fujiDl).path(), "utf8");
+
+    await installProvider(fujiPage, attester);
+    await fujiPage.evaluate(() => {
+      window.walletState.mode = "wrong";
+      window.walletState.simulateChainMissing4902 = true;
+    });
+
+    await fujiPage.getByRole("button", { name: "Check wallet", exact: true }).click();
+    await fujiPage.getByText(/Wrong wallet network/).waitFor();
+    assert.equal(
+      await fujiPage.evaluate(() => window.walletState.switchCount),
+      0,
+    );
+
+    const switchBtn = fujiPage.getByRole("button", {
+      name: "Switch wallet to 43113",
+      exact: true,
+    });
+    await switchBtn.waitFor();
+    await switchBtn.click();
+    await fujiPage
+      .getByText(/Avalanche Fuji \(43113\) added to wallet/)
+      .waitFor();
+    const switchStats = await fujiPage.evaluate(() => ({
+      switchCount: window.walletState.switchCount,
+      addCount: window.walletState.addCount,
+      addedRpc: window.walletState.lastAddedChain?.rpcUrls?.[0] ?? null,
+    }));
+    assert.deepEqual(switchStats, {
+      switchCount: 1,
+      addCount: 1,
+      addedRpc: "https://api.avax-test.network/ext/bc/C/rpc",
+    });
+
+    // Unauthorized attester account fails closed.
+    await fujiPage.evaluate(() => {
+      window.walletState.activeAccount =
+        "0x0000000000000000000000000000000000007500";
+    });
+    await fujiPage.getByRole("button", { name: "Check wallet", exact: true }).click();
+    await fujiPage.getByText(/Account lacks live attester permission/).waitFor();
+    assert(
+      await fujiPage
+        .getByRole("button", { name: "Publish", exact: true })
+        .isDisabled(),
+    );
+
+    // Switch back to authorized attester and exercise initial unavailable -> pending Check receipt -> confirmed recovery.
+    await fujiPage.evaluate((acc) => {
+      window.walletState.activeAccount = acc;
+      window.walletState.receiptMode = "unavailable";
+    }, attester);
+    await fujiPage.getByRole("button", { name: "Check wallet", exact: true }).click();
+    await fujiPage.getByText(/Authorized Fuji attester/).waitFor();
+    await fujiPage.getByRole("button", { name: "Publish", exact: true }).click();
+    await fujiPage
+      .getByText(/Receipt unavailable\. Use Check receipt/)
+      .waitFor();
+
+    await fujiPage.evaluate(() => {
+      window.walletState.receiptMode = "null";
+    });
+    await fujiPage.getByRole("button", { name: "Check receipt", exact: true }).click();
+    await fujiPage.getByText(/still pending/).waitFor();
+    await fujiPage.locator("article code", { hasText: /^0x[0-9a-f]{64}$/ }).waitFor();
+
+    await fujiPage.evaluate(() => {
+      window.walletState.receiptMode = "ok";
+    });
+    await fujiPage.getByRole("button", { name: "Check receipt", exact: true }).click();
+    await fujiPage
+      .getByText(/Confirmed publication: 0x[0-9a-f]{64}/)
+      .waitFor();
+
+    // Lookup, canonical import, and original-block replay on the simulated Fuji origin.
+    await fujiPage.goto(fujiOriginUrl + "/lookup");
+    await fujiPage.getByLabel("Target contract address").fill(fixture);
+    await fujiPage.getByRole("button", { name: "Find latest", exact: true }).click();
+    await fujiPage.getByText("Report body unavailable.", { exact: true }).waitFor();
+    await fujiPage.getByLabel("Import canonical JSON").setInputFiles({
+      name: "fuji-report.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(fujiJson),
+    });
+    await fujiPage.getByText(/Hash and registry summary fields agree/).waitFor();
+    await fujiPage
+      .getByRole("button", { name: "Replay original block", exact: true })
+      .click();
+    await fujiPage.getByText(/Original-block replay: replay-matches/).waitFor();
+  } catch (err) {
+    console.error("FUJI_BROWSER_ERROR:", err);
+    console.error(
+      (await activePage?.locator("body").innerText().catch(() => ""))?.slice(-2500),
+    );
+    activePage = null;
+    throw err;
+  } finally {
+    await fujiBrowser?.close();
+    fujiServer.kill();
+    await fujiClosed;
+  }
+
   console.log(
-    "Browser passed: score 35, template explanation, delayed stale-response discard, AI validation fallback, export, network/snapshot/rejection guards, confirmed receipt, receipt recovery, wallet events, mid-read chain round-trip, reverted/unverified/replaced/post-timeout-replaced/missing-hash/mismatched-hash/competing-nonce receipts, clean lookup, import races, replay, current state and pruned history.",
+    "Browser passed (local Anvil + simulated non-loopback Fuji config): score 35, template explanation, delayed stale-response discard, AI validation fallback, export, origin & network switch guards, unauthorized attester check, pending receipt recovery, confirmed receipt, lookup, import, replay, current state and pruned history.",
   );
 } catch (error) {
   console.error((await activePage?.locator("body").innerText())?.slice(-2500));

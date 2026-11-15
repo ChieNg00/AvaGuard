@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getServerConfig } from "../lib/server-config";
 import "./globals.css";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -7,6 +8,7 @@ export const metadata: Metadata = {
   description: "Evidence-based ERC-20 risk signals.",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const { headerPill } = getServerConfig();
   return (
     <html lang="en">
       <body>
@@ -18,11 +20,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Link href="/">Scan</Link>
             <Link href="/lookup">Lookup</Link>
           </nav>
-          <span className="pill">
-            {process.env.AVAGUARD_ENV === "local"
-              ? "Local Anvil · 43113"
-              : "Fuji reader · 43113"}
-          </span>
+          <span className="pill">{headerPill}</span>
         </header>
         <main>{children}</main>
         <footer>
