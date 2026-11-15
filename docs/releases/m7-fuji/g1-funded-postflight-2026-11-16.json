@@ -1,0 +1,56 @@
+{
+  "scope": "G1 funded post-simulation check; read-only, no actual deployment receipts",
+  "observedAtUtc": "2026-11-15T22:05:55.080Z",
+  "sourceCommit": "c7bd311cfb8d0253dedec9719c2d50a542963792",
+  "chainId": "43113",
+  "blockNumber": "61139363",
+  "blockHash": "0x0ccbffa6292a8f8802ccdfd9f52ebe0a99267ad160bc046003dd85404957ab09",
+  "headerRecheckPassed": true,
+  "owner": {
+    "address": "0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1",
+    "balanceWei": "100000000000000000",
+    "nonce": "0",
+    "code": "0x"
+  },
+  "attester": {
+    "address": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "balanceWei": "399999999996640000",
+    "nonce": "1",
+    "code": "0x"
+  },
+  "balancesUnchangedSinceFundedPreflight": true,
+  "bothAccountNoncesUnchangedSinceFundedPreflight": true,
+  "allSixPredictedAddressesHaveEmptyCode": true,
+  "predicted": [
+    {
+      "contract": "RiskRegistry",
+      "address": "0x003D1f3C26FfAC734297979B1FC82914217C5392",
+      "code": "0x"
+    },
+    {
+      "contract": "DemoBaselineToken",
+      "address": "0x58d42E6710764c1753Cad885fA80916a1F516Fec",
+      "code": "0x"
+    },
+    {
+      "contract": "DemoMintPauseToken",
+      "address": "0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6",
+      "code": "0x"
+    },
+    {
+      "contract": "DemoUpgradeableToken",
+      "address": "0x3E56446cACf6Aa3D77157de83c449c837d45064d",
+      "code": "0x"
+    },
+    {
+      "contract": "DemoTokenProxy",
+      "address": "0xFfAd3eb4FbB259B1e76f84A66d6C0D005864d61c",
+      "code": "0x"
+    },
+    {
+      "contract": "DecoyConstantToken",
+      "address": "0xFa73c98Ece0639CB86dA211E98E742289dE5FCd4",
+      "code": "0x"
+    }
+  ]
+}

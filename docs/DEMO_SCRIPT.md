@@ -2,6 +2,8 @@
 
 Target runtime: **2m 30s** (max 3m 00s). Show observed behavior strictly as risk signals + snapshot evidence — never describe a `0 / 100` score as a safety guarantee or audit.
 
+This is a recording template. Scores below are observed local Anvil references; replace or confirm them with actual Fuji evidence before narration. Public source, app, report and media links remain pending. Follow [M7_EXECUTION_PLAN.md](M7_EXECUTION_PLAN.md) and reconfirm the event's media limit before recording.
+
 ## 1. Timed Recording Script (6 Beats)
 
 ### Beat 1 — Snapshot-Bound Scan & Honest Banding (~25s)
@@ -30,7 +32,7 @@ Target runtime: **2m 30s** (max 3m 00s). Show observed behavior strictly as risk
 
 ## 2. Live / Recording Fallback Routes (Fail-Closed Behavior)
 
-Use these prepared explanations if a real network condition occurs during a live demo (or highlight them intentionally as safety guarantees):
+Use these prepared explanations if a real network condition occurs during a live demo, and describe them as explicit failure handling:
 
 1. **Historical state pruned (`historical-state-unavailable`)**: Do **not** switch to `latest` or claim the published report is invalid. Point directly to the UI message showing that historical archival state for block `B` is unavailable on this RPC endpoint.
 2. **Missing canonical JSON (`Report body unavailable.`)**: Show that `/lookup` displays only the on-chain summary tuple and keeps replay disabled until a byte-exact matching JSON is imported — never guessing missing evidence.
@@ -39,7 +41,7 @@ Use these prepared explanations if a real network condition occurs during a live
 
 ## 3. Concise Presentation Outline (5 Slides)
 
-1. **Problem**: Token checks fail cleanly when mixing blocks, treating isolated selector constants without supported dispatcher evidence as confirmed privileged functions, or trusting unverified summaries without snapshot provenance.
+1. **Problem**: Token checks can mislead users when they mix blocks, treat isolated selector constants as confirmed privileged functions, or present summaries without verifiable snapshot provenance.
 2. **Architecture**: Deterministic `@avaguard/analyzer` (pinned single-block collector + ERC-1967/beacon/minimal-proxy resolution + ruleset `v1`) -> `RiskRegistry` on Avalanche (`43113`) -> Next.js web app + client wallet signing.
 3. **Showcase Contracts**: Four deployed demo targets (`0`, `45`, `60`, `0` decoy) demonstrating coverage, proxy resolution, and selector-constant false-positive resistance (while distinguishing lack of dispatcher evidence from safety proof).
 4. **Trust Boundaries**: Zero server keys, config fail-closed (`local` vs `fuji`), `registryRuntimeHash` pinning, canonical JSON `keccak256` commitment, and AI constrained to validated evidence IDs.
@@ -48,7 +50,7 @@ Use these prepared explanations if a real network condition occurs during a live
 ## 4. Pre-Recording & Submission Checklist
 
 - [ ] Hosted HTTPS URL (`AVAGUARD_ENV=fuji`) verified live (`not recorded`).
-- [ ] All 6 contracts (`RiskRegistry`, 4 demo contracts + implementation) deployed on Fuji (`43113`) and verified on Snowscan/Snowtrace (`not deployed`).
+- [ ] All 6 contracts (`RiskRegistry`, 4 demo contracts + implementation) deployed on Fuji (`43113`) with accessible verified source on the selected provider (`not deployed`).
 - [ ] Canonical JSON bundles exported from Fuji scans and attached cleanly (`not recorded`).
 - [ ] Video walkthrough (`2–3m`, clear 1080p audio/captions) uploaded and linked (`not recorded`).
 - [ ] Slide deck exported and linked (`not recorded`).

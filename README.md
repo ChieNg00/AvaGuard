@@ -7,8 +7,8 @@ ERC-20 risk-signal workspace for Team1 Vietnam UniHack 2026. The local M5/M6 flo
 - M0–M6 have recorded local verification. [M6 PR #7](https://github.com/ChieNg00/AvaGuard/pull/7) merged into `main` at `76857b1`; both CI jobs passed for final PR head `193391f`. See [PROGRESS.md](docs/PROGRESS.md) for the fresh merged-checkout checks and their limits.
 - Explanations work without a key. Optional AI behavior has been tested with local mocks only; no live Gemini adapter is implemented. Prompt v2 lets the model select validated evidence/check IDs and ordering; displayed conclusions remain deterministic.
 - Publication and receipt recovery previously required the local Anvil/loopback environment; M7 preparation now adds explicit `local` and `fuji` server/client configuration modes (`AVAGUARD_ENV`), reproducible `RiskRegistry` artifact identity checks (`scripts/verify-registry-identity.mjs`), deployable Fuji demo contracts (`packages/contracts/src/DemoTokens.sol` + `script/DeployDemo.s.sol`), user-run deployment/verification scripts (`scripts/fuji-deploy.sh`), and delivery/demo docs ([M7 delivery runbook](docs/M7_DELIVERY.md), [demo script](docs/DEMO_SCRIPT.md)).
-- Live Fuji broadcast, explorer source verification, real browser wallet smoke checks, public hosting, and submission recording remain user-executed after M7 preparation; see [M7 delivery runbook](docs/M7_DELIVERY.md) and [M7 execution guide](docs/M7_ANTIGRAVITY_PROMPT.md).
-- [M7 PR #8](https://github.com/ChieNg00/AvaGuard/pull/8) was opened at `4937c72`. The five PR #8 delivery/runbook review fixes (`R1`–`R5`) from the [review and next plan](docs/M7_REVIEW_AND_NEXT_PLAN.md) and [PR #8 fix prompt](docs/M7_PR8_REVIEW_FIX_PROMPT.md) have been implemented and verified locally in the working tree (uncommitted local diff awaiting review/commit/CI; no live Fuji deploy, explorer verification, or public hosting has been executed).
+- [M7 PR #8](https://github.com/ChieNg00/AvaGuard/pull/8) is merged into `main` at `c7bd311` (final PR head `b994134`). R1–R5 are resolved, including literal `~/` keystore expansion. [Post-merge CI](https://github.com/ChieNg00/AvaGuard/actions/runs/43709090662) passed both jobs, including the deployment/readback regression step.
+- G2 completed on November 16: six Fuji contracts, seven successful deployment/authorization receipts and strict full initial-state readback at block `61141800`. See the [release evidence and actual addresses](docs/releases/m7-fuji/README.md). Next: G3 source verification and G4 HTTPS hosting in the [public-delivery plan](docs/M7_EXECUTION_PLAN.md) and [continuation prompt](docs/M7_PUBLIC_DELIVERY_PROMPT.md); browser publication acceptance and submission remain pending. Do not rerun the completed deployment.
 
 The M1/M2 sections below retain historical observations; use the current status, progress log and local demo for the implemented flow.
 
@@ -20,7 +20,7 @@ The M1/M2 sections below retain historical observations; use the current status,
 - Only authorized attesters may publish report commitments to a registry.
 - English interface first; a usable template report remains available when AI is disabled or fails.
 - Prioritize stability and verifiable results. Transaction simulation, mainnet scanning and autonomous investigation are outside the first MVP.
-- Submission deadline: 2026-11-21 23:59 Asia/Ho_Chi_Minh. Final Demo Day: 2026-11-30.
+- Recorded submission target: 2026-11-21 23:59 Asia/Ho_Chi_Minh; recorded Demo Day: 2026-11-30. Reconfirm organizer requirements before submission; the organizer site was not accessible during the November 15 planning check.
 
 ## Start here
 
@@ -28,7 +28,7 @@ The M1/M2 sections below retain historical observations; use the current status,
 2. Read `docs/THREAT_MODEL.md` and `docs/ACCEPTANCE.md` before implementation.
 3. Open this folder as the working project in Codex or Antigravity.
 4. Review the current status and latest entries in `docs/PROGRESS.md`.
-5. Follow the local demo above. For the next implementation request, use `docs/M7_PR8_REVIEW_FIX_PROMPT.md`; the original M7 preparation prompts describe the work already implemented on PR #8.
+5. Follow the local demo above. For the next session, use [M7_PUBLIC_DELIVERY_PROMPT.md](docs/M7_PUBLIC_DELIVERY_PROMPT.md) with [M7_EXECUTION_PLAN.md](docs/M7_EXECUTION_PLAN.md). The original preparation and PR #8 fix prompts are historical.
 
 Codex recognizes AGENTS.md as project guidance. For Antigravity, explicitly ask it to read the file; automatic discovery has not been verified. INIT_PROMPT.md is ordinary portable project text, not a claim about an IDE-specific configuration format.
 

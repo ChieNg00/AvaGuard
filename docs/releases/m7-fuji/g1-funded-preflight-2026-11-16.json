@@ -1,0 +1,37 @@
+{
+  "scope": "G1 funded public-account preflight; read-only, no signer or broadcast",
+  "observedAtUtc": "2026-11-15T22:03:02.418Z",
+  "sourceCommit": "c7bd311cfb8d0253dedec9719c2d50a542963792",
+  "rpcUrl": "https://api.avax-test.network/ext/bc/C/rpc",
+  "chainId": "43113",
+  "blockNumber": "61139244",
+  "blockHash": "0x0601f29ee1c0e1c3051851b07dba8701490158a834bad5603f59388b7d7f24c1",
+  "headerRecheckPassed": true,
+  "owner": {
+    "address": "0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1",
+    "balanceWei": "100000000000000000",
+    "balanceAvax": "0.1",
+    "nonce": "0",
+    "code": "0x"
+  },
+  "attester": {
+    "address": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "balanceWei": "399999999996640000",
+    "balanceAvax": "0.39999999999664",
+    "nonce": "1",
+    "code": "0x"
+  },
+  "initialHolder": "0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1",
+  "fees": {
+    "gasPriceWei": "160",
+    "maxPriorityFeePerGasWei": "150",
+    "blockBaseFeePerGasWei": "10",
+    "note": "Base fee belongs to the pinned block. Gas-price and priority-fee estimates are current RPC responses and are not block-pinned."
+  },
+  "signerOwnerMatch": {
+    "status": "confirmed by user",
+    "method": "User reports local cast wallet address --account fuji-deployer returned supplied owner",
+    "assistantUnlockedKeystore": false
+  },
+  "fundingTransferReceipt": "not supplied; balances independently verified"
+}

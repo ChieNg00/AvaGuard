@@ -4,13 +4,13 @@ Reviewed 2026-11-15, Vietnam time. Review baseline: clean `m7/Fuji-deployment` a
 
 ## Decision
 
-M7 local preparation is implemented and its existing automated checks pass. **Fix update (2026-11-15):** local code, regression, and runbook fixes for all five findings (`R1`–`R5`) have been implemented on top of `4937c72` and verified locally (still uncommitted in the working tree awaiting maintainer review, commit/push, and fresh CI before merge/public execution). No live Fuji transactions, explorer verifications, or hosting deployments were executed. The findings below document the original `4937c72` baseline reviewed on Nov 15.
+**Closure update (2026-11-15):** all five findings (`R1`–`R5`), including the follow-up literal `~/` expansion defect, are resolved at final PR head `b994134`. [PR #8](https://github.com/ChieNg00/AvaGuard/pull/8) is merged at `c7bd311`; [post-merge CI run 43709090662](https://github.com/ChieNg00/AvaGuard/actions/runs/43709090662) passed both jobs, including deployment/readback script checks. At that review no live Fuji transaction, explorer verification or hosted deployment was recorded. **November 16 continuation:** authorized G2 deployment and strict full readback are now complete; see [the release evidence](releases/m7-fuji/README.md). Source verification and hosting remain pending. Findings and line references below describe the historical `4937c72` review baseline.
 
-[PR #8](https://github.com/ChieNg00/AvaGuard/pull/8) was open and unmerged when checked. [CI run 43590294061](https://github.com/ChieNg00/AvaGuard/actions/runs/43590294061) passed both `workspace-checks` and `contracts-and-integration` for head `4937c72`. This is PR-head evidence, not a post-merge or live-Fuji result.
+At the original review, PR #8 was open and [CI run 43590294061](https://github.com/ChieNg00/AvaGuard/actions/runs/43590294061) passed for `4937c72`. That earlier evidence is retained separately from the closure update above.
 
-The next implementation request is [M7_PR8_REVIEW_FIX_PROMPT.md](M7_PR8_REVIEW_FIX_PROMPT.md). It is local hardening of the existing M7 work, not another product milestone.
+The current next step is [M7_EXECUTION_PLAN.md](M7_EXECUTION_PLAN.md), with [M7_PUBLIC_DELIVERY_PROMPT.md](M7_PUBLIC_DELIVERY_PROMPT.md) for the next session. [M7_PR8_REVIEW_FIX_PROMPT.md](M7_PR8_REVIEW_FIX_PROMPT.md) is the completed historical fix scope.
 
-## Findings to resolve
+## Historical findings — resolved
 
 All five findings are P2: concrete defects in the delivery path that should be fixed before public execution. File/line references describe the reviewed commit.
 
@@ -77,7 +77,9 @@ Use the effective deployment `INITIAL_HOLDER` and one consistent set of public a
 
 Initial sandboxed Foundry execution failed with `Wsl/E_ACCESSDENIED`; the permission-enabled WSL run succeeded. An initial mock server in Windows was unreachable from WSL, so that attempt established no code result; both successful reproductions ran the mock inside WSL. Browser/integration suites ran sequentially because they share an Anvil port.
 
-## Proposed next work and completion gates
+## Historical next-work proposal — superseded
+
+The table below records the original review handoff. Its first two steps are now complete through merged PR #8; use [M7_EXECUTION_PLAN.md](M7_EXECUTION_PLAN.md) for current status and sequencing.
 
 | Order | Work | Completion evidence | Scope/authorization |
 | --- | --- | --- | --- |

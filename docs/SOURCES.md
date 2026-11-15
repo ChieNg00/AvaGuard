@@ -49,6 +49,8 @@ Installed project tool versions beyond basic availability, package compatibility
 
 ## M7 official documentation references (reviewed 2026-11-14)
 
+Historical list below. The November 15 planning addendum distinguishes freshly read documentation from older endpoint assumptions; a documentation reference is not evidence that a live verification/deployment succeeded.
+
 - https://build.avax.network/docs/quick-start/networks/fuji-testnet - official Avalanche Fuji C-Chain testnet parameters (chain ID `43113`, public RPC `https://api.avax-test.network/ext/bc/C/rpc`), faucet links, and explorer references.
 - https://build.avax.network/docs/dapps/developer-toolchains/foundry/deploying-smart-contracts - official Foundry deployment and verification guidance for Avalanche C-Chain / Fuji.
 - https://build.avax.network/docs/dapps/smart-contract-dev/deploy-smart-contracts/verify-smart-contracts - official Avalanche smart contract verification guidance (`forge verify-contract` with Routescan Etherscan-compatible endpoint `https://api.routescan.io/v2/network/testnet/evm/43113/etherscan` and `snowscan.xyz` / `snowtrace.io`).
@@ -56,3 +58,12 @@ Installed project tool versions beyond basic availability, package compatibility
 - https://faucet.avax.network/ and https://core.app/tools/testnet-faucet/ - official Fuji testnet AVAX faucets.
 - https://getfoundry.sh/forge/reference/script and https://getfoundry.sh/forge/reference/verify-contract and https://getfoundry.sh/cast/reference/wallet/new - Foundry CLI references matching local installed `forge 1.9.0-stable` / `cast 1.9.0-stable`.
 - https://nextjs.org/docs/app/getting-started/deploying and https://nextjs.org/docs/app/api-reference/config/next-config-js/output - Next.js Node.js server (`next start`) and standalone deployment references.
+
+## M7 public-delivery planning check — 2026-11-15
+
+- [PR #8](https://github.com/ChieNg00/AvaGuard/pull/8): observed merged at `c7bd311cfb8d0253dedec9719c2d50a542963792`; final PR head `b994134ba49cf34a179028c23cff3b9ae73117c7`.
+- [Post-merge CI run 43709090662](https://github.com/ChieNg00/AvaGuard/actions/runs/43709090662): push-triggered run on that merge commit; both jobs and deployment/readback, integration and browser steps succeeded. The commit-workflow connector filters to PR runs, so the push run was checked through the GitHub Actions REST resource instead.
+- [Builder Hub verification](https://build.avax.network/docs/tooling/contract-verification) and [verification API](https://build.avax.network/docs/tooling/contract-verification/api-reference): current guide describes Builder Hub's own custom/Sourcify endpoints. This does not verify availability of the older Routescan endpoint. Fuji support and the chosen live source-verification flow remain execution checks.
+- [Vercel Node versions](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions), [package managers](https://vercel.com/docs/package-managers), [monorepos](https://vercel.com/docs/monorepos), [build configuration](https://vercel.com/docs/builds/configure-a-build) and [function duration](https://vercel.com/docs/functions/configuring-functions/duration): support the proposed Node 24/pnpm/workspace configuration in M7_EXECUTION_PLAN.md. No Vercel account, plan or deployment was created or validated.
+- [Next.js deployment modes](https://nextjs.org/docs/app/getting-started/deploying): Node server mode supports the existing `next build`/`next start` fallback. AvaGuard uses server actions, so a static export alone does not provide its implemented flow.
+- [Organizer site](https://team1vn.xyz/): inaccessible through the research tool during this pass. Recorded deadline, category/AI requirements, submission fields and media limits require reconfirmation. Do not treat the earlier recorded dates as freshly verified.

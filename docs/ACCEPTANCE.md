@@ -70,4 +70,4 @@ Deploy only after separate user authorization. Use owned Fuji examples: ordinary
 
 The 2-3 minute video shows one complete scan, evidence, explanation/fallback, authorized publication and lookup. Include one denied unauthorized publication or a clear analyzer negative control. Record measured latency and actual addresses only after running the demo.
 
-Before submission: working app, repo and run instructions, verified registry source, accessible slides/video and report retrieval. Confirm each link is accessible to judges. Target submission before the official deadline of 2026-11-21 23:59 Vietnam time.
+Before submission: working app, repo and run instructions, verified registry source, accessible slides/video and report retrieval. Confirm each link is accessible to judges. The repository's recorded deadline is 2026-11-21 23:59 Vietnam time; revalidate it and the required submission fields with the organizer. The organizer page was inaccessible during the November 15 planning check. See [M7_EXECUTION_PLAN.md](M7_EXECUTION_PLAN.md) for the delivery gates.

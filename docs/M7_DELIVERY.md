@@ -1,6 +1,8 @@
 # AvaGuard M7 Delivery & Fuji Deployment Runbook
 
-This runbook documents the configuration, Foundry deployment, source-verification, hosting, and submission readiness steps prepared in M7. At handoff time, no live Fuji transactions, explorer verifications, or public hosting deployments have been executed; all unexecuted on-chain/external items are explicitly marked `not deployed`, `not verified`, or `not recorded`.
+This runbook documents the configuration, Foundry deployment, source-verification, hosting, and submission readiness steps prepared in M7. G2 completed on November 16: six Fuji contracts, one attester authorization, seven successful receipts and strict full initial-state readback. See [the release evidence](releases/m7-fuji/README.md). Explorer source verification, public hosting and later acceptance/submission items remain unexecuted and explicitly marked below.
+
+PR #8 is merged at `c7bd311` with passing post-merge CI. Follow [M7_EXECUTION_PLAN.md](M7_EXECUTION_PLAN.md) for the current sequence, public inputs, hosting proposal, evidence requirements and failure recovery. The commands here are execution references, not authorization to publish or sign.
 
 ## 1. Environment Modes (`local` vs `fuji`)
 
@@ -15,6 +17,8 @@ This runbook documents the configuration, Foundry deployment, source-verificatio
 Keep `.env.local` untracked and never embed RPC basic-auth credentials (`https://user:pass@...`) in `FUJI_RPC_URL`.
 
 ## 2. Wallet Roles & Foundry Keystore Setup (User-Run)
+
+On November 16 the user set up both wallets, funded the owner and completed G2 with local keystore signing. [The G2 execution record](releases/m7-fuji/G2_HANDOFF.md) preserves the successful commands and evidence; do not repeat the deployment. [M7_WALLET_SETUP.md](M7_WALLET_SETUP.md) and the creation/import commands below are reference instructions for an operator without an existing wallet; do not recreate or overwrite `fuji-deployer`. Real AvaGuard browser-wallet publication acceptance remains pending.
 
 Separate the deployer/registry owner key from the injected browser attester key so `OWNER_ADDRESS` is not mixed with routine report attestation:
 
@@ -122,9 +126,12 @@ Pinned compiler profile in `packages/contracts/foundry.toml`:
 
 Rebuild with `--build-info` before verifying so Foundry retains matching metadata, ensure the same `OWNER_ADDRESS`, `INITIAL_HOLDER` (defaulting to `OWNER_ADDRESS` only when unset), and all 6 deployed contract addresses are exported, then run `forge verify-contract` against the chosen Fuji verifier:
 
-- Per Avalanche Builder Hub contract verification docs (consulted 2026-11-15: `https://build.avax.network/docs/tooling/contract-verification` and `https://build.avax.network/docs/dapps/smart-contract-dev/deploy-smart-contracts/verify-smart-contracts`), verify against Routescan's Etherscan-compatible Fuji API (`https://api.routescan.io/v2/network/testnet/evm/43113/etherscan`) with `--verifier custom` (or `--verifier etherscan` when using an Etherscan/Snowscan-compatible API key; check current Foundry/explorer key requirements before executing). If a target explorer uses Standard JSON / `--build-info` upload instead of the Etherscan-style API, export standard JSON from Foundry (`forge verify-contract --show-standard-json-input ...`).
+- Select the verifier before running these commands. The current [Builder Hub guide](https://build.avax.network/docs/tooling/contract-verification) documents Builder Hub's own API; it does not establish Routescan endpoint availability. Its [API reference](https://build.avax.network/docs/tooling/contract-verification/api-reference) uses `/api/verify/{chainId}/api` for catalog chains with public RPCs. Confirm Fuji support before selecting `https://build.avax.network/api/verify/43113/api`. The API accepts a non-empty placeholder API-key field; it is not an account credential.
+- The previously recorded Routescan endpoint, `https://api.routescan.io/v2/network/testnet/evm/43113/etherscan`, is a separate candidate requiring fresh provider/API confirmation. Record the selected provider and set `VERIFIER_URL` locally to its confirmed Fuji endpoint. A successful submission is not evidence of source visibility on another explorer.
+- The examples below use an Etherscan-compatible custom endpoint. Check installed `forge verify-contract --help` and the selected provider's current key requirements. If using a Standard JSON upload instead, export with `forge verify-contract --show-standard-json-input` for the actual address/contract and keep the same compiler profile. No source upload or live endpoint verification was executed in this planning pass.
 
 ```bash
+: "${VERIFIER_URL:?Select and confirm a Fuji Etherscan-compatible verifier endpoint first}"
 cd packages/contracts
 ~/.foundry/bin/forge build --build-info
 : "${INITIAL_HOLDER:=$OWNER_ADDRESS}"
@@ -134,7 +141,7 @@ OWNER_ARGS="$(~/.foundry/bin/cast abi-encode 'constructor(address)' "$OWNER_ADDR
 ~/.foundry/bin/forge verify-contract "$REGISTRY_ADDRESS" src/RiskRegistry.sol:RiskRegistry \
   --chain 43113 \
   --verifier custom \
-  --verifier-url https://api.routescan.io/v2/network/testnet/evm/43113/etherscan \
+  --verifier-url "$VERIFIER_URL" \
   --constructor-args "$OWNER_ARGS" \
   --watch
 
@@ -142,42 +149,42 @@ OWNER_ARGS="$(~/.foundry/bin/cast abi-encode 'constructor(address)' "$OWNER_ADDR
 BASE_ARGS="$(~/.foundry/bin/cast abi-encode 'constructor(string,string,address,uint256)' 'AvaGuard Demo Baseline' 'AGBASE' "$INITIAL_HOLDER" 1000000000000000000000000)"
 ~/.foundry/bin/forge verify-contract "$BASELINE_TOKEN_ADDRESS" src/DemoTokens.sol:DemoBaselineToken \
   --chain 43113 --verifier custom \
-  --verifier-url https://api.routescan.io/v2/network/testnet/evm/43113/etherscan \
+  --verifier-url "$VERIFIER_URL" \
   --constructor-args "$BASE_ARGS" --watch
 
 # 3. DemoMintPauseToken (initialOwner = $OWNER_ADDRESS, initialHolder = $INITIAL_HOLDER)
 MP_ARGS="$(~/.foundry/bin/cast abi-encode 'constructor(string,string,address,address,uint256)' 'AvaGuard Demo MintPause' 'AGMP' "$OWNER_ADDRESS" "$INITIAL_HOLDER" 1000000000000000000000000)"
 ~/.foundry/bin/forge verify-contract "$MINT_PAUSE_TOKEN_ADDRESS" src/DemoTokens.sol:DemoMintPauseToken \
   --chain 43113 --verifier custom \
-  --verifier-url https://api.routescan.io/v2/network/testnet/evm/43113/etherscan \
+  --verifier-url "$VERIFIER_URL" \
   --constructor-args "$MP_ARGS" --watch
 
 # 4. DemoUpgradeableToken (implementation)
 ~/.foundry/bin/forge verify-contract "$UPGRADEABLE_IMPL_ADDRESS" src/DemoTokens.sol:DemoUpgradeableToken \
   --chain 43113 --verifier custom \
-  --verifier-url https://api.routescan.io/v2/network/testnet/evm/43113/etherscan --watch
+  --verifier-url "$VERIFIER_URL" --watch
 
 # 5. DemoTokenProxy (ERC-1967 proxy; initialize initialOwner = $OWNER_ADDRESS, initialHolder = $INITIAL_HOLDER)
 INIT_BYTES="$(~/.foundry/bin/cast calldata 'initialize(string,string,address,address,uint256)' 'AvaGuard Demo Upgradeable' 'AGUP' "$OWNER_ADDRESS" "$INITIAL_HOLDER" 1000000000000000000000000)"
 PROXY_ARGS="$(~/.foundry/bin/cast abi-encode 'constructor(address,bytes)' "$UPGRADEABLE_IMPL_ADDRESS" "$INIT_BYTES")"
 ~/.foundry/bin/forge verify-contract "$UPGRADEABLE_PROXY_ADDRESS" src/DemoTokens.sol:DemoTokenProxy \
   --chain 43113 --verifier custom \
-  --verifier-url https://api.routescan.io/v2/network/testnet/evm/43113/etherscan \
+  --verifier-url "$VERIFIER_URL" \
   --constructor-args "$PROXY_ARGS" --watch
 
 # 6. DecoyConstantToken (negative control)
 ~/.foundry/bin/forge verify-contract "$DECOY_TOKEN_ADDRESS" src/GoldenFixtures.sol:DecoyConstantToken \
   --chain 43113 --verifier custom \
-  --verifier-url https://api.routescan.io/v2/network/testnet/evm/43113/etherscan --watch
+  --verifier-url "$VERIFIER_URL" --watch
 ```
 
-Check verification status manually if needed with `forge verify-check <GUID> --chain 43113 --verifier custom --verifier-url https://api.routescan.io/v2/network/testnet/evm/43113/etherscan`. If verifying on Snowscan (`https://testnet.snowscan.xyz`) with an Etherscan V2 API key instead of Routescan's unkeyed custom endpoint, pass `--verifier etherscan --etherscan-api-key "$SNOWSCAN_API_KEY"`. Both Snowscan and Snowtrace (`https://testnet.snowtrace.io`) can be consulted by judges, so confirm visibility on the explorer(s) linked in the final submission.
+Check the selected provider's status with `forge verify-check <GUID> --chain 43113 --verifier custom --verifier-url "$VERIFIER_URL"` when supported. For a different verifier protocol, use that provider's documented Foundry options after confirming Fuji support; do not reuse a key or endpoint from another provider. Record the actual match/status and open each final source link while signed out. Return to the repository root (`cd ../..`) before using root-level scripts.
 
 ## 5. Hosted Web App & No-DB Canonical Report Retrieval Plan
 
 ### Hosting Target (Proposed)
 
-- **Proposed runtime**: Provider-neutral **Node.js `next start`** server (`apps/web`, running behind HTTPS/TLS termination on a Node 24 host matching `package.json` `"engines": { "node": ">=24.0.0 <25" }`, CI `24.19.0`, and `pnpm@12.4.2`; candidate providers include Railway, Render, Fly.io, Cloud Run, or a VPS — no hosting provider has been provisioned yet). Vercel is not required unless desired later.
+- **Current recommendation**: the user confirmed no existing hosting/domain. Use **Vercel Hobby and its assigned `*.vercel.app` project domain** for an eligible personal/non-commercial demo, targeting USD 0 within included usage. [M7_EXECUTION_PLAN.md](M7_EXECUTION_PLAN.md) records current provider references, configuration, limits and the required hosted smoke check. Account setup/public deployment remain pending. Both this path and the provider-neutral **Node.js `next start`** fallback below require Node 24, pnpm 12.4.2, the workspace analyzer package, server execution and HTTPS.
 - **Startup commands**:
   ```bash
   pnpm install --frozen-lockfile
@@ -215,16 +222,17 @@ All four demo contracts below were compiled with Forge (`0.8.30`, `cancun`, opti
 
 | Item | Address / URL | Explorer Verification Status | Notes |
 | --- | --- | --- | --- |
-| `RiskRegistry` | `not deployed` | `not verified` | Runtime hash pinned to `0x4fae2a424c444bfdc1c89924898d33a63b25b30a5ece9ed3bb4c1fbe96397b38` |
-| `DemoBaselineToken` (`AGBASE`) | `not deployed` | `not verified` | Ordinary ERC-20 baseline |
-| `DemoMintPauseToken` (`AGMP`) | `not deployed` | `not verified` | Controlled mint + real pause |
-| `DemoUpgradeableToken` (impl) | `not deployed` | `not verified` | UUPS logic contract (`_disableInitializers`) |
-| `DemoTokenProxy` (`AGUP`) | `not deployed` | `not verified` | ERC-1967 proxy pointing to `DemoUpgradeableToken` |
-| `DecoyConstantToken` | `not deployed` | `not verified` | Selector-constant negative control (absence of dispatcher evidence is not a safety proof) |
+| `RiskRegistry` | `0x003D1f3C26FfAC734297979B1FC82914217C5392` | `not verified` | On-chain runtime matched pinned hash `0x4fae2a424c444bfdc1c89924898d33a63b25b30a5ece9ed3bb4c1fbe96397b38`; explorer source verification remains G3 |
+| `DemoBaselineToken` (`AGBASE`) | `0x58d42E6710764c1753Cad885fA80916a1F516Fec` | `not verified` | Ordinary ERC-20 baseline |
+| `DemoMintPauseToken` (`AGMP`) | `0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6` | `not verified` | Controlled mint + real pause |
+| `DemoUpgradeableToken` (impl) | `0x3E56446cACf6Aa3D77157de83c449c837d45064d` | `not verified` | UUPS logic contract (`_disableInitializers`) |
+| `DemoTokenProxy` (`AGUP`) | `0xFfAd3eb4FbB259B1e76f84A66d6C0D005864d61c` | `not verified` | ERC-1967 proxy pointing to `DemoUpgradeableToken` |
+| `DecoyConstantToken` | `0xFa73c98Ece0639CB86dA211E98E742289dE5FCd4` | `not verified` | Selector-constant negative control (absence of dispatcher evidence is not a safety proof) |
 | Publication transaction hashes | `not recorded` | — | Record after Fuji attester publishes canonical reports |
 | Canonical report files for Fuji suite | `not recorded` | — | Export from `/` right after scanning Fuji deployments |
-| Hosted AvaGuard HTTPS URL | `not deployed` | — | Deploy Node server (`apps/web`) with `AVAGUARD_ENV=fuji` |
-| Public repository / demo video / slides | `not recorded` | — | Fill cleanly before final UniHack submission |
+| Hosted AvaGuard HTTPS URL | `not deployed` | — | Deploy `apps/web` with server execution and `AVAGUARD_ENV=fuji` |
+| Public repository | [ChieNg00/AvaGuard](https://github.com/ChieNg00/AvaGuard) | — | GitHub metadata reports public; recheck signed-out judge access before submission |
+| Demo video / slides | `not recorded` | — | Fill after recording/upload; confirm event requirements |
 
 ## 7. Manual Core / Real-Wallet & Submission Checklists
 
@@ -239,7 +247,7 @@ All four demo contracts below were compiled with Forge (`0.8.30`, `cancun`, opti
 
 ### Public Release Readiness Checklist
 
-- [ ] Fuji deployment broadcast complete and all 6 contracts verified on Snowtrace/Snowscan.
+- [ ] Fuji deployment broadcast complete and all 6 source pages verified and accessible on the selected provider.
 - [ ] Canonical JSON bundles exported for all 4 demo contracts, committed/attached, and verified on `/lookup`.
-- [ ] Live hosted Node server reachable over HTTPS with `AVAGUARD_ENV=fuji` and `AVAGUARD_APP_ORIGIN` set.
-- [ ] GitHub repository made public with clean history (no `.env.local`, no keystores, no private keys) and demo video/slides linked.
+- [ ] Hosted app reachable over HTTPS with server actions working, `AVAGUARD_ENV=fuji` and `AVAGUARD_APP_ORIGIN` set.
+- [ ] Public repository and release files reviewed for accidental credential inclusion, accessible while signed out, and linked to the demo video/slides. Existing public visibility does not require another visibility change.

@@ -1,0 +1,68 @@
+{
+  "scope": "Authorized G2 pre-broadcast public-state check; no signer or transaction used",
+  "observedAtUtc": "2026-11-15T22:48:06.400Z",
+  "sourceCommit": "c7bd311cfb8d0253dedec9719c2d50a542963792",
+  "chainId": "43113",
+  "rpcUrl": "https://api.avax-test.network/ext/bc/C/rpc",
+  "blockNumber": "61141016",
+  "blockHash": "0x5305325be9bdf36e9c066c5831f4662d814ca08794bd0c4b1ee9c6fca8ddff61",
+  "headerRecheckPassed": true,
+  "owner": {
+    "address": "0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1",
+    "balanceWei": "100000000000000000",
+    "nonce": "0",
+    "pendingNonce": "0",
+    "code": "0x"
+  },
+  "attester": {
+    "address": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "balanceWei": "399999999996640000",
+    "nonce": "1",
+    "pendingNonce": "1",
+    "code": "0x"
+  },
+  "initialHolder": "0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1",
+  "gasPriceWei": "160",
+  "maxPriorityFeePerGasWei": "150",
+  "blockBaseFeePerGasWei": "10",
+  "feeComparison": {
+    "gas": "4858094",
+    "calculation": "max(current gasPrice, 2 * blockBaseFee + current priorityFee); comparison only, not a transaction fee cap",
+    "comparisonFeePerGasWei": "170",
+    "comparisonCostWei": "825875980",
+    "ownerBalanceCoversComparison": true
+  },
+  "allPredictedAddressesHaveEmptyCode": true,
+  "predicted": [
+    {
+      "contract": "RiskRegistry",
+      "address": "0x003D1f3C26FfAC734297979B1FC82914217C5392",
+      "code": "0x"
+    },
+    {
+      "contract": "DemoBaselineToken",
+      "address": "0x58d42E6710764c1753Cad885fA80916a1F516Fec",
+      "code": "0x"
+    },
+    {
+      "contract": "DemoMintPauseToken",
+      "address": "0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6",
+      "code": "0x"
+    },
+    {
+      "contract": "DemoUpgradeableToken",
+      "address": "0x3E56446cACf6Aa3D77157de83c449c837d45064d",
+      "code": "0x"
+    },
+    {
+      "contract": "DemoTokenProxy",
+      "address": "0xFfAd3eb4FbB259B1e76f84A66d6C0D005864d61c",
+      "code": "0x"
+    },
+    {
+      "contract": "DecoyConstantToken",
+      "address": "0xFa73c98Ece0639CB86dA211E98E742289dE5FCd4",
+      "code": "0x"
+    }
+  ]
+}

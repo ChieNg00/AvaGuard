@@ -1,0 +1,28 @@
+{
+  "observedAtUtc": "2026-11-15T22:58:58.449Z",
+  "scope": "G2 attempt 3 stopped; inspect user-visible error before retry",
+  "exitCode": "1",
+  "rawFiles": [
+    {
+      "path": "packages/contracts/broadcast/DeployDemo.s.sol/43113/run-1794783195428.json",
+      "transactions": 7,
+      "hashCount": 0,
+      "receiptCount": 0,
+      "pendingCount": 0
+    },
+    {
+      "path": "packages/contracts/broadcast/DeployDemo.s.sol/43113/run-1794783447232.json",
+      "transactions": 7,
+      "hashCount": 0,
+      "receiptCount": 0,
+      "pendingCount": 0
+    },
+    {
+      "path": "packages/contracts/broadcast/DeployDemo.s.sol/43113/run-latest.json",
+      "transactions": 7,
+      "hashCount": 0,
+      "receiptCount": 0,
+      "pendingCount": 0
+    }
+  ]
+}

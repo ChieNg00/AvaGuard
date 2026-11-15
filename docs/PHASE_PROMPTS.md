@@ -24,11 +24,11 @@ Build English Scan/Lookup, wagmi injected-only wallet connection, Fuji switch, l
 
 ## Phase 5 Delivery preparation
 
-Current status (updated 2026-11-15): the local `R1`–`R5` fixes specified in the [PR #8 delivery review fix prompt](M7_PR8_REVIEW_FIX_PROMPT.md) have been implemented and verified in the local working tree on top of `4937c72`, awaiting maintainer commit/push/CI review and the later authorization/evidence gates in the [review and next plan](M7_REVIEW_AND_NEXT_PLAN.md).
+Current status (updated 2026-11-15): PR #8 and R1–R5 fixes are merged at `c7bd311`; post-merge CI passed. Use the [public-delivery continuation prompt](M7_PUBLIC_DELIVERY_PROMPT.md) and [detailed execution plan](M7_EXECUTION_PLAN.md) for the next session. Default scope is local preparation and read-only checks; public actions require the user's relevant authorization.
 
 The original [M7 delivery preparation](M7_PREPARATION_PROMPT.md) describes the implementation scope and acceptance checks used after merged M6. Preparation does not complete the public-delivery milestone.
 
-The earlier [full M7 preparation prompt](M7_ANTIGRAVITY_PROMPT.md) retains the original code paths, local/Fuji behavior, deployable examples, runbook deliverables, regression matrix and final handoff. Use the PR #8 fix prompt above for the current continuation in either Codex or Antigravity.
+The earlier [full M7 preparation prompt](M7_ANTIGRAVITY_PROMPT.md) retains the original implementation scope. The [PR #8 fix prompt](M7_PR8_REVIEW_FIX_PROMPT.md) and [review record](M7_REVIEW_AND_NEXT_PLAN.md) are historical; do not repeat their completed fixes or the merge.
 
 Prepare user-run Foundry keystore/faucet/deployment/attester/fixture/source-verification commands using current primary docs. Do not run wallet import or deployment. Complete judges' README, threat model, report export/retrieval instructions, real-address table only when known, and a 2-3 minute demo script. Include semantic negative controls and template fallback. Run available local checks and stop/report. Execute deployments or publish links only under a subsequent explicit instruction with appropriate wallet/user interaction.
 
