@@ -1,0 +1,116 @@
+{
+  "scope": "Independent read-only verification of the first user-signed G5 Fuji report publication; canonical JSON body, browser import and historical state replay are not yet verified",
+  "observedAtUtc": "2026-11-17T16:56:20.846Z",
+  "chainId": "43113",
+  "rpcUrl": "https://api.avax-test.network/ext/bc/C/rpc",
+  "sourceCommit": "c7bd311cfb8d0253dedec9719c2d50a542963792",
+  "registryAddress": "0x003D1f3C26FfAC734297979B1FC82914217C5392",
+  "registryRuntimeHash": "0x4fae2a424c444bfdc1c89924898d33a63b25b30a5ece9ed3bb4c1fbe96397b38",
+  "targetContract": "DemoBaselineToken",
+  "transactionHash": "0xcc9d9f41e3189a87ce98fc121f5e88392c94a3bc5b0783a670a82ea65f2902be",
+  "transaction": {
+    "from": "0xc6f32290379ca39273306e3758ab0a2b813ce3eb",
+    "to": "0x003d1f3c26ffac734297979b1fc82914217c5392",
+    "nonce": "1",
+    "valueWei": "0",
+    "functionName": "publish",
+    "input": "0x89fa044e00000000000000000000000058d42e6710764c1753cad885fa80916a1f516fec00000000000000000000000000000000000000000000000000000000000000009b45050932a81a0af4504e25210bc9f2b962685204c52661e707cffd5960a444000000000000000000000000000000000000000000000000000000000000000044aa619ede0e1f741861c6203673a212c2f4299e97f76e7d54f028b08228f93600000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000003a6876720eec9f0dfc128c7f7cdbbdf5da07ce565aac0b063d90f9e4f5539969afbfdbc"
+  },
+  "receipt": {
+    "status": 1,
+    "blockNumber": "61245622",
+    "blockHash": "0xee3a44c8ed1ba573e4b660c36c5168e4afbf28d311aa003caa98fe98bca04e39",
+    "gasUsed": "259997",
+    "effectiveGasPriceWei": "160",
+    "totalFeeWei": "41599520"
+  },
+  "publication": {
+    "target": "0x58d42E6710764c1753Cad885fA80916a1F516Fec",
+    "score": 0,
+    "codehash": "0x9b45050932a81a0af4504e25210bc9f2b962685204c52661e707cffd5960a444",
+    "implementation": "0x0000000000000000000000000000000000000000",
+    "reportHash": "0x44aa619ede0e1f741861c6203673a212c2f4299e97f76e7d54f028b08228f936",
+    "rulesetVersion": 1,
+    "blockNumber": "61245287",
+    "blockHash": "0x20eec9f0dfc128c7f7cdbbdf5da07ce565aac0b063d90f9e4f5539969afbfdbc"
+  },
+  "storedCommitmentAtReceiptBlock": {
+    "report": {
+      "target": "0x58d42E6710764c1753Cad885fA80916a1F516Fec",
+      "score": 0,
+      "codehash": "0x9b45050932a81a0af4504e25210bc9f2b962685204c52661e707cffd5960a444",
+      "implementation": "0x0000000000000000000000000000000000000000",
+      "reportHash": "0x44aa619ede0e1f741861c6203673a212c2f4299e97f76e7d54f028b08228f936",
+      "rulesetVersion": 1,
+      "blockNumber": "61245287",
+      "blockHash": "0x20eec9f0dfc128c7f7cdbbdf5da07ce565aac0b063d90f9e4f5539969afbfdbc"
+    },
+    "attester": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "publishedAt": "1794934417"
+  },
+  "reportPublishedEvent": {
+    "target": "0x58d42E6710764c1753Cad885fA80916a1F516Fec",
+    "reportHash": "0x44aa619ede0e1f741861c6203673a212c2f4299e97f76e7d54f028b08228f936",
+    "attester": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "score": 0,
+    "codehash": "0x9b45050932a81a0af4504e25210bc9f2b962685204c52661e707cffd5960a444",
+    "implementation": "0x0000000000000000000000000000000000000000",
+    "rulesetVersion": 1,
+    "blockNumber": "61245287",
+    "blockHash": "0x20eec9f0dfc128c7f7cdbbdf5da07ce565aac0b063d90f9e4f5539969afbfdbc",
+    "publishedAt": "1794934417"
+  },
+  "publishedAtUtc": "2026-11-17T16:53:37.000Z",
+  "checks": {
+    "successfulReceipt": true,
+    "chainAndSenderAndDestinationMatch": true,
+    "zeroNativeValue": true,
+    "registryRuntimeMatchesFrozenG2": true,
+    "calldataEventAndStoredCommitmentAgree": true,
+    "attesterAuthorizedAtReceiptBlock": true,
+    "receiptBlockHashVerified": true,
+    "originalReportHeaderHashVerified": true,
+    "bothHeaderHashesAndChainRechecked": true
+  },
+  "canonicalExportExpectedFilename": "avaguard-0x58d42e6710764c1753cad885fa80916a1f516fec-61245287.json",
+  "canonicalReportStatus": "pending original browser export and hash validation",
+  "browserImportStatus": "pending",
+  "historicalReplayStatus": "pending; checking the original block header does not demonstrate historical state replay",
+  "observedUi": [
+    "User supplied screenshot: wallet changed, recheck required, Publish disabled",
+    "User supplied screenshot: Authorized Fuji attester, Publish enabled",
+    "User supplied screenshot: Confirmed publication with this transaction hash"
+  ],
+  "remainingWalletChecks": [
+    "unauthorized account",
+    "account-change readiness invalidation",
+    "report-change readiness invalidation",
+    "explicit confirmation of user-rejection recovery"
+  ],
+  "manualWalletObservations": [
+    {
+      "check": "wrong-network guard after Check wallet",
+      "status": "observed in user screenshot",
+      "evidence": "Wrong wallet network. Select Avalanche Fuji (43113).; Publish disabled; Switch wallet to 43113 visible",
+      "attachment": "codex-clipboard-22a799b8-5e8c-4860-bb3e-1fdf331a27f0.png"
+    },
+    {
+      "check": "network-change readiness invalidation",
+      "status": "observed in user screenshot",
+      "evidence": "Wallet changed. Check the account and network again.; Publish disabled",
+      "attachment": "codex-clipboard-bb52c835-f6db-45d6-bc64-569bf1225396.png"
+    },
+    {
+      "check": "return to Fuji using the app switch flow",
+      "status": "user-reported success with subsequent authorized-attester screenshot",
+      "attachment": "codex-clipboard-fad16feb-0fda-46bd-a856-e910705f1c9b.png"
+    },
+    {
+      "check": "first report publication",
+      "status": "user screenshot and independent Fuji receipt/commitment verification",
+      "attachment": "codex-clipboard-c3319186-214a-4c48-9eb4-937e82c14e4e.png"
+    }
+  ],
+  "attachmentNote": "Attachment names refer to the user's chat screenshots; no screenshot files have been copied into the public release bundle."
+}
+

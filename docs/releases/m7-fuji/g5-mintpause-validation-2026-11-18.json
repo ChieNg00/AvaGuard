@@ -1,0 +1,85 @@
+{
+  "scope": "G5 DemoMintPauseToken original canonical export validation and user-observed browser lookup, import, matching original-block replay and current-state comparison",
+  "observedAtUtc": "2026-11-17T17:45:52.532Z",
+  "updatedAtUtc": "2026-11-18T01:06:03.796Z",
+  "observationDateVietnam": "2026-11-18",
+  "sourceFilename": "avaguard-0xe2f96ca00564cee3505ac3b22d4cf0f66b730ec6-61246821.json",
+  "fileBytes": 15525,
+  "fileSha256": "8e1adca83854ccbc72c7178b6cc50e7637aed9da465c1e4c6c481f76bdfae324",
+  "reportHash": "0xf8fb1ca6fae7e6ebb9e79694c30c1e1a89834c0aa6ad89997634d67d04cdc74c",
+  "chainId": "43113",
+  "address": "0xe2f96ca00564cee3505ac3b22d4cf0f66b730ec6",
+  "blockNumber": "61246821",
+  "blockHash": "0x1a027631c7fb2ef6b86fd77e1c6bf9cf04f7b5bec36ecc94978ea567bd530a12",
+  "signalScore": 45,
+  "findings": [
+    "R-MINT",
+    "R-OWNER-EOA",
+    "R-PAUSE",
+    "R-SOURCE-UNKNOWN"
+  ],
+  "coverageCounts": {
+    "checked": 12,
+    "notChecked": 7,
+    "unavailable": 0,
+    "notApplicable": 0
+  },
+  "validations": {
+    "strictSchema": true,
+    "rawBytesAreCanonical": true,
+    "rawKeccakMatchesCanonicalReportHash": true,
+    "hashMatchesVerifiedOnChainCommitment": true,
+    "allEightPublicationFieldsMatch": true,
+    "targetBytecodeEvidenceHashMatches": true,
+    "targetRuntimeAtSnapshotAndReceiptMatches": true
+  },
+  "browserLookup": {
+    "status": "one-publication",
+    "snapshotBlockNumber": "61246821",
+    "attestedScore": 45,
+    "basis": "user-provided screenshot",
+    "attachment": "codex-clipboard-6688960c-d13b-4677-bd4f-cc5d1137f714.png"
+  },
+  "browserImport": {
+    "status": "commitment-matches",
+    "message": "Commitment matches. Hash and registry summary fields agree.",
+    "basis": "user-provided screenshot",
+    "attachment": "codex-clipboard-79079539-b04f-44a5-b382-291c7823b2b3.png",
+    "targetRuntimeCodeCheck": "unchanged"
+  },
+  "browserOriginalBlockReplay": {
+    "status": "replay-matches",
+    "message": "Original-block replay: replay-matches",
+    "originalBlockNumber": "61246821",
+    "basis": "user-provided screenshot on localhost lookup after importing this report",
+    "attachment": "codex-clipboard-f7c45b02-0456-4bc9-9693-48e38ddc7a52.png",
+    "independentlyRerunThisSession": false
+  },
+  "currentStateComparison": {
+    "status": "no-semantic-changes",
+    "currentBlockNumber": "61249225",
+    "currentBlockHash": null,
+    "message": "Current block 61249225 · No semantic changes.",
+    "basis": "user-provided screenshot; current block hash is not visible",
+    "attachment": "codex-clipboard-ae60f793-626c-4db3-8784-527bddb61450.png",
+    "scopeNote": "This describes the app's deterministic comparison fields, separately from original-block replay; it does not establish that all contract state is unchanged.",
+    "independentlyRerunThisSession": false
+  },
+  "publicationEvidenceFile": "g5-mintpause-publication-2026-11-18.json",
+  "walletGuardsEvidenceFile": "g5-wallet-guards-2026-11-18.json",
+  "transportRecoveryEvidenceFile": "g5-localhost-transport-recovery-2026-11-18.json",
+  "proxyValidationEvidenceFile": "g5-proxy-validation-2026-11-18.json",
+  "g5AcceptanceEvidenceFile": "g5-acceptance-2026-11-18.json",
+  "transactionHash": "0xe1ba2e32585c0fcedab582c3e71618b81b3261c870744e6e56bfc6f593eb03f2",
+  "savedCanonicalFile": "avaguard-0xe2f96ca00564cee3505ac3b22d4cf0f66b730ec6-61246821.json",
+  "preservation": {
+    "copiedWithoutByteChanges": true,
+    "userOriginalUnchanged": true,
+    "rawExportNotReformatted": true
+  },
+  "observationNote": "The original export was found at the exact expected filename in the previously shared Avalanche folder. Schema/hash/summary and read-only on-chain publication checks were executed independently. Browser lookup/import/replay/current-state results are user-supplied screenshot observations; neither browser replay nor a new analyzer scan was run by the assistant.",
+  "attachmentNote": "Names refer to chat screenshots; image files are not included in the release bundle.",
+  "remainingAcceptance": {
+    "hosting": "optional / deferred"
+  }
+}

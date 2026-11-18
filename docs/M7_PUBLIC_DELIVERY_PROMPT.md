@@ -1,14 +1,15 @@
 # M7 continuation prompt: merged preparation to public delivery
 
-Use this prompt after PR #8. The earlier M7 preparation and PR #8 fix prompts are historical. Read actual repository/CI state and the November 16 G1 evidence before continuing.
+Use this prompt after G2, G3 and G5. The [session plan](M7_G3_G4_SESSION_PLAN.md) has the verified addresses and localhost settings. The [G5 acceptance record](releases/m7-fuji/g5-acceptance-2026-11-18.json) links four completed real wallet flows and is the source for G6.
 
 Copy the block below into Codex or Antigravity. It starts with local preparation and read-only checks. Merely pasting it does not authorize signing, public deployment, source upload, hosting publication or submission.
 
 ```text
-Continue AvaGuard M7 using docs/M7_EXECUTION_PLAN.md.
+Continue AvaGuard M7 using docs/M7_G3_G4_SESSION_PLAN.md and docs/M7_EXECUTION_PLAN.md.
 
 Read AGENTS.md, docs/DECISIONS.md, docs/SCANNER_SPEC.md,
-docs/ACCEPTANCE.md, docs/PROGRESS.md, docs/M7_EXECUTION_PLAN.md,
+docs/ACCEPTANCE.md, docs/PROGRESS.md, docs/M7_G3_G4_SESSION_PLAN.md,
+docs/M7_EXECUTION_PLAN.md,
 docs/M7_DELIVERY.md and docs/DEMO_SCRIPT.md first.
 
 Discuss with the user in Vietnamese. Use English for code and project docs.
@@ -22,8 +23,16 @@ Known baseline, to recheck:
 - G0 continuation refreshed origin/main and created codex/m7-public-delivery
   at c7bd311, preserving all 11 existing documentation files byte-for-byte.
   See docs/releases/m7-fuji/README.md for current technical evidence.
-  Execution source/artifact hashes were frozen for G2; documentation remains
-  uncommitted and the working tree is not claimed clean.
+  Execution source/artifact hashes were frozen for G2. Its evidence is now
+  committed at bbbe4418c98225bda569ed6e892ec2bd6449536d, tracking the same
+  origin branch. The next-session planning edits form a new local diff.
+- PR #9 is open at bbbe441; CI 43774373740 passed both jobs. November 17
+  read-only checks found active ruleset main-2 requires one approving review,
+  while PR #9 has no reviews. Both required checks pass and no merge conflict
+  or review thread was reported. Obtain the required review, then recheck state
+  before an authorized merge; do not bypass the rule or request reviewers
+  without authorization. G3 does not depend on this merge.
+  No runtime source/config diff from deployed c7bd311 was observed.
 - G2 completed on November 16 under explicit user authorization and local
   user-operated keystore signing: six deployed Fuji contracts, one attester
   authorization, seven successful receipts and strict full initial-state
@@ -31,12 +40,22 @@ Known baseline, to recheck:
   docs/releases/m7-fuji/g2-deployment-2026-11-16.json and
   docs/releases/m7-fuji/g2-initial-readback-2026-11-16.json.
   Do not rerun deployment. Owner nonce is now 7 at the post-receipt snapshot.
-  Source verification, browser report publication, hosting, report bundle
-  and media remain pending.
-- The user confirmed no existing hosting/domain and requested a recommendation.
-  The plan now recommends Vercel Hobby with its assigned *.vercel.app domain
-  for an eligible personal/non-commercial demo, targeting USD 0 within included
-  usage. Account selection/creation and public deployment remain pending.
+- G3 completed on November 17 under explicit authorization: all six deployed Fuji
+  contracts verified sequentially (`Exact match`, `Pass - Verified`) on
+  Avalanche Builder Hub (`https://build.avax.network/api/verify/43113/api`)
+  using the frozen `v0.8.30+commit.73712a01` / `cancun` / `200` / IPFS settings
+  and confirmed publicly readable at
+  `https://build.avax.network/explorer/fuji/c-chain/address/<address>` while
+  signed out; see docs/releases/m7-fuji/g3-verification-2026-11-17.json.
+  G5 completed on November 18 with four successful Fuji publications and matching
+  canonical JSONs, imports and replays. GitHub publication and media remain
+  pending. The G5 acceptance record is in docs/releases/m7-fuji.
+- The user confirmed no existing hosting/domain and previously accepted Vercel
+  Hobby + `*.vercel.app` as an optional demo target (USD 0 within included usage).
+  Following the user-reported November 17 organizer recap (GitHub -> video ->
+  slides; video max 3 minutes; Vietnamese presentation; hosting optional),
+  G4 stays optional after the core G6 submission package. Its hosting checks
+  remain deferred until G4 executes.
 - The user reported both testnet wallets set up and supplied public addresses.
   November 16 funded G1 refresh passed: six creations, one attester authorization,
   4,858,094 estimated gas, no signer/broadcast/receipts. Owner had 0.1 AVAX,
@@ -64,33 +83,32 @@ for each of these; use the tool's approval mechanism if the environment needs
 it. Continue independent work when wallet addresses are missing.
 
 Preserve completed G0/G1/G2 work; complete only missing or stale checks:
-1. Inspect git status and current refs. Preserve the planning diff before
-   synchronizing to merged main; never reset or discard it. Record the exact
-   selected source SHA and CI evidence. Create codex/m7-public-delivery only
-   if a new follow-up branch is needed.
+1. Inspect git status, current refs and PR #9. Preserve the current delivery
+   branch and planning diff; never reset or discard them to switch to main.
+   Record the exact selected source SHA and CI evidence. Merge/push only
+   within explicit authorization, after required review/rules are satisfied.
 2. Inspect pinned toolchain and build artifacts; run the registry identity
    check. If artifacts are missing, rebuild using the existing compiler
    profile. Reuse passing CI evidence; do not rerun the whole suite for prose.
 3. Reuse the supplied owner/attester addresses and owner-as-holder default
-   recorded in the G2 handoff unless the user changes them. Hosting account/domain, signing
-   operator details, verifier choice and event reconfirmation belong to later
-   gates; do not require them before a no-signer simulation. Record confirmed
-   inputs separately from proposals. If the user still has no wallets, use
-   docs/M7_WALLET_SETUP.md and finish all independent preparation.
+   recorded in the G2 handoff unless the user changes them. Existing wallets,
+   funding and deployment are complete; G3/G4 require no keystore unlock.
+   Resolve hosting account/operator inputs only if optional G4 is requested.
+   Record confirmed inputs separately from proposals.
 4. Prepare a public evidence record with pending fields. Do not invent a
-   deployment address, hash, scan latency, source status or hosted URL.
-5. Reuse the completed G1 and on-chain G2 evidence. No new deployment simulation
-   or broadcast is needed for G3/G4. Read-only checks may confirm the existing
-   deployment; retain its strict initial-state readback snapshot as evidence.
-6. Resolve verifier endpoint and host build settings from current official
-   documentation. Builder Hub and Routescan are different providers. Verify
-   exact Node/pnpm selection and server-action execution budget for hosting.
-7. Prepare source-verification/hosting handoffs using the actual receipt-derived
-   addresses, frozen build-info and effective INITIAL_HOLDER. Do not substitute
-   predictions or redeploy the completed suite to fill a missing document field.
+   deployment address, hash, scan latency, source status or hosted URL. Keep
+   any unrun hosting-only checks explicitly marked pending or deferred.
+5. Reuse the completed G1, G2, G3 and G5 evidence.
+6. Review the local G3/G5 evidence bundle for authorized GitHub publication.
+   Use docs/releases/m7-fuji/g5-acceptance-2026-11-18.json for actual reports,
+   receipts, replay results and localhost origins.
+7. Update README, record the max-3-minute Vietnamese demo video, and prepare
+   Vietnamese slides (GitHub -> video -> slides) for G6, then run optional G4
+   Vercel Hobby hosting only if time/team elects it.
 
-If further public execution is separately authorized, continue G3-G6 in order
-using the completed G2 deployment. The safeguards below also apply to any
+If further public execution is separately authorized, execute only the requested
+gates using the completed G2 deployment; stop at their boundary. The safeguards
+below also apply to any
 separately requested corrective deployment; do not infer a redeployment request:
 - User controls the encrypted Foundry deployer keystore and local password
   prompt. No raw keys, passwords, recovery phrases or secrets in chat/logs/env
@@ -132,7 +150,7 @@ ATTESTER_ADDRESS=0xc6f32290379CA39273306e3758aB0a2b813ce3eB
 INITIAL_HOLDER=0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1
 ```
 
-Later public-execution fields; these do not block G0 or G1 simulation:
+Later execution fields; request only missing inputs needed by the authorized G3/G4 stage. Public wallet roles above are already known:
 
 ```text
 Requested gate(s):

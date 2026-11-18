@@ -1,0 +1,87 @@
+{
+  "scope": "G5 real-wallet guard observations supplied through user screenshots while scanning DemoMintPauseToken; operational evidence, not a canonical analyzer report",
+  "recordedAtUtc": "2026-11-17T17:24:01.000Z",
+  "updatedAtUtc": "2026-11-17T17:45:52.532Z",
+  "observationDateVietnam": "2026-11-18",
+  "appOrigin": "http://localhost:3000",
+  "chainId": "43113",
+  "targetContract": "DemoMintPauseToken",
+  "targetAddress": "0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6",
+  "displayedReport": {
+    "score": 45,
+    "band": "Some signals",
+    "blockNumber": "61246505",
+    "blockHash": "0xb2ff87f8bfd9517b596528abf81bb3e28ae81effc6ec288301a180cbff751c01",
+    "findings": [
+      "R-MINT",
+      "R-OWNER-EOA",
+      "R-PAUSE",
+      "R-SOURCE-UNKNOWN"
+    ],
+    "coverageCounts": {
+      "checked": 12,
+      "unavailable": 0,
+      "outsideScope": 7
+    },
+    "basis": "transcribed from user screenshot; this report body and snapshot have not been independently validated",
+    "attachment": "codex-clipboard-f3f2fc8a-bd37-483d-b987-29369349aab0.png"
+  },
+  "authorizedAttester": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+  "unauthorizedAccount": {
+    "status": "observed-pass",
+    "accountLabel": "Account 2",
+    "displayedAddress": "0x64Bb8...57E93",
+    "fullAddress": null,
+    "basis": "user-provided screenshot; MetaMask shows Account 2 connected to localhost on Fuji",
+    "message": "Account lacks live attester permission.",
+    "publishDisabled": true,
+    "attachment": "codex-clipboard-381afec0-be4c-4d65-a9bc-e0057e334aa6.png"
+  },
+  "accountChangeEvent": {
+    "status": "observed",
+    "beforeAccountLabel": "Account 1",
+    "afterAccountLabel": "Account 2",
+    "message": "Wallet changed. Check the account and network again.",
+    "publishDisabled": true,
+    "attachment": "codex-clipboard-ca10401a-e771-4a0b-b55b-dd06f4f7ed74.png"
+  },
+  "accountChangeReadinessInvalidation": {
+    "status": "observed-pass-with-user-confirmation",
+    "basis": "The user explicitly confirmed that Check wallet had enabled Publish before switching accounts; the after-change screenshot shows Wallet changed and Publish disabled.",
+    "userConfirmedPreChangeReady": true,
+    "userConfirmationVietnamese": "Đã thấy Publish bật trước khi đổi tài khoản",
+    "provenanceNote": "The supplied earlier screenshot predates the intervening successful Check wallet. The enabled state is user-confirmed in text; the changed-account disabled state is visible in the screenshot.",
+    "beforeChangeAttachment": "codex-clipboard-bcf41ca9-d462-4362-ac6d-91c09c0b8d49.png",
+    "afterChangeAttachment": "codex-clipboard-ca10401a-e771-4a0b-b55b-dd06f4f7ed74.png"
+  },
+  "reportChangeReadinessInvalidation": {
+    "status": "observed-pass",
+    "basis": "Before/after user screenshots supplied in response to the guided rescan check show the same Account 1 on Fuji, initially authorized with Publish enabled, then the initial wallet-check prompt with Publish disabled.",
+    "beforeMessage": "Authorized Fuji attester: 0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "beforePublishEnabled": true,
+    "afterMessage": "Connect the attester wallet on Avalanche Fuji (43113) to check permission.",
+    "afterPublishDisabled": true,
+    "beforeChangeAttachment": "codex-clipboard-a7f7b4b6-7bfd-4c0d-914f-ce27f2e5ba93.png",
+    "afterChangeAttachment": "codex-clipboard-4787deae-f1c1-4138-adda-11e8db2582ff.png",
+    "newReportBlockNumber": null,
+    "newReportBlockHash": null,
+    "provenanceNote": "The new report snapshot is not visible in these screenshots. The earlier displayedReport snapshot must not be assumed to identify the rescan."
+  },
+  "intentionalRejectRecovery": {
+    "status": "observed-pass-with-user-confirmation",
+    "basis": "The user explicitly confirmed Cancel during Publish; the after-cancel screenshot shows the recoverable wallet error, Check wallet enabled and Publish disabled, without a displayed transaction hash or success state.",
+    "userConfirmationVietnamese": "Đây nhé, tôi đã bấm cancel lúc publish",
+    "message": "Wallet rejected or failed to submit the transaction.",
+    "checkWalletEnabled": true,
+    "publishDisabled": true,
+    "transactionHashDisplayed": false,
+    "successStateDisplayed": false,
+    "attachment": "codex-clipboard-c606a3ac-82f6-431b-ae7e-86f4faacd407.png",
+    "provenanceNote": "This records cancellation handling and availability of a fresh wallet check. A subsequent successful Mint/pause publication is independently verified in the linked publication evidence; the canceled prompt itself has no displayed transaction hash.",
+    "subsequentPublicationEvidenceFile": "g5-mintpause-publication-2026-11-18.json"
+  },
+  "publicationForThisTarget": "subsequent successful publication independently verified; see g5-mintpause-publication-2026-11-18.json",
+  "attachmentNote": "Names refer to chat screenshots; image files are not included in the release bundle.",
+  "assistantActions": "Local evidence/documentation only; no account or network changes, signing, broadcast, commit/push or hosting action"
+}
+

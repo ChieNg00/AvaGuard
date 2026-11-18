@@ -1,19 +1,20 @@
 # M7 public delivery execution plan
 
-Prepared 2026-11-15; preparation status updated 2026-11-16, Vietnam time. This is the continuation after PR #8, with a concrete preparation phase and separately authorized public execution. It does not declare a Fuji deployment or hosted demo complete.
+Prepared 2026-11-15 and updated 2026-11-18, Vietnam time. G2 Fuji deployment, G3 Builder Hub verification and G5 real-wallet acceptance on localhost are complete. G6 covers evidence publication, README, a Vietnamese demo video of at most three minutes and Vietnamese slides. The organizer recap gives the order as **GitHub → video → slides**, with G4 public hosting optional. See [the release evidence](releases/m7-fuji/README.md) and [the session plan](M7_G3_G4_SESSION_PLAN.md).
 
 ## 1. Starting point and outcome
 
-Observed through GitHub on November 15:
+Observed through GitHub and the workspace on November 15–17:
 
 - [PR #8](https://github.com/ChieNg00/AvaGuard/pull/8) is merged. Final PR head: `b994134ba49cf34a179028c23cff3b9ae73117c7`; merge commit: `c7bd311cfb8d0253dedec9719c2d50a542963792`.
 - [Post-merge CI run 43709090662](https://github.com/ChieNg00/AvaGuard/actions/runs/43709090662) passed both jobs, including deployment/readback regressions, contracts, integration and browser acceptance. This is automated evidence, not a real-wallet or public-host result.
-- G0 continuation refreshed `origin/main` and created local `codex/m7-public-delivery` at `c7bd311`. All 11 existing documentation files were byte-identical across the switch. The [G2 source record](releases/m7-fuji/g2-source-2026-11-16.json) freezes the unchanged execution source/artifact hashes and prior passing CI. Documentation is still uncommitted; the working tree is not claimed clean.
+- G0 continuation refreshed `origin/main` and created `codex/m7-public-delivery` at `c7bd311`, preserving the existing documentation. The [G2 source record](releases/m7-fuji/g2-source-2026-11-16.json) freezes that execution source/artifact identity. The November 16 planning session later observed G2 evidence committed at `bbbe4418c98225bda569ed6e892ec2bd6449536d`, matching its upstream, with a clean starting checkout and no runtime source/config diff from `c7bd311`. The new planning edits are a separate local diff.
+- [PR #9](https://github.com/ChieNg00/AvaGuard/pull/9) is open; [CI 43774373740](https://github.com/ChieNg00/AvaGuard/actions/runs/43774373740) passed both jobs for `bbbe441`. November 17 read-only checks identified an unmet requirement in [ruleset main-2](https://github.com/ChieNg00/AvaGuard/rules/27142816): one approving review is required, but none has been submitted. There are no review threads or merge conflicts and both required checks pass. Obtain the required review and recheck state before an authorized merge; source verification can proceed independently of that merge.
 - R1–R5 are resolved by the reviewed fixes. Their original findings remain in [the review record](M7_REVIEW_AND_NEXT_PLAN.md). The repository is already public according to GitHub metadata; recheck judge access before submission.
-- November 16 continuation completed G1 and the explicitly authorized G2: six contracts, one attester authorization, seven successful receipts and strict full initial-state readback at block `61141800`. See [the live deployment evidence](releases/m7-fuji/README.md). Owner nonce is now `7`; do not rerun the nonce-zero deployment.
-- Explorer source verification, browser report-publication receipts, hosted app, canonical Fuji report bundle, video and slides remain pending.
+- November 16 continuation completed G1 and the explicitly authorized G2: six contracts, one attester authorization, seven successful receipts and strict full initial-state readback at block `61141800`. November 17 G3 verified all six deployed contracts (`Exact match`, `Pass - Verified`) on Avalanche Builder Hub (`43113`) while keeping the frozen G2 artifacts unchanged. See [the live deployment and verification evidence](releases/m7-fuji/README.md) and [the G3 verification manifest](releases/m7-fuji/g3-verification-2026-11-17.json). Owner nonce is `7`; do not rerun the deployment or re-verify these sources.
+- November 18 G5 completed with four verified Fuji receipts, matching canonical JSONs, fresh browser imports and recorded original-block replays. GitHub publication, final README, video and slides remain G6 work. G4 and its hosting checks stay deferred. See [the G5 acceptance record](releases/m7-fuji/g5-acceptance-2026-11-18.json).
 
-**Required outcome:** a judge can open the HTTPS app, scan owned Fuji examples without a wallet, inspect evidence/coverage, retrieve a published commitment, import its canonical JSON, and attempt original-block replay. The authorized attester demonstrates a real browser-signed publication. Verified source and public submission links accompany the demo.
+**Required outcome:** a reproducible public repository with verified Fuji contracts (`G2`/`G3`), end-to-end real-wallet Fuji proof (`scan → export → publish → /lookup → import → replay`) recorded with canonical JSON bundles (`G5` on localhost, or optional HTTPS host if G4 runs), plus README, max-3m demo video and Vietnamese slides (`G6`, `GitHub → video → slides`). Hosting-only verifications stay explicitly `pending`/`deferred` unless G4 executes.
 
 Use [M7_DELIVERY.md](M7_DELIVERY.md) for deployment and constructor-argument commands, [ACCEPTANCE.md](ACCEPTANCE.md) for product acceptance, and [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the recording outline. This plan defines order, decisions and evidence.
 
@@ -30,25 +31,25 @@ Only public addresses and non-secret choices belong in the handoff. Passwords, r
 | `ATTESTER_ADDRESS` | User supplied `0xc6f32290379CA39273306e3758aB0a2b813ce3eB`; distinct from owner; funded refresh observed `0.39999999999664 AVAX`, nonce `1` | G1, G2, G5 |
 | `INITIAL_HOLDER` | `0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1` (owner default used in simulation and prepared command) | G1–G3 |
 | Wallet | MetaMask in Chrome recommended for a first-time operator; the app currently reads `window.ethereum`. Real-wallet behavior remains a G5 check | G5 |
-| Hosting | User confirmed no existing hosting/domain and requested a recommendation. Recommend Vercel Hobby for the demo; Node 24 server remains the technical fallback | G4 |
-| Host account/plan | Personal Hobby project operated by one designated owner, subject to plan eligibility; account not yet selected/created. Proposed hosting/domain budget: USD 0 within included usage | Before creating or deploying a service |
-| App origin | Stable project domain under `*.vercel.app`; actual name assigned during setup. No custom-domain purchase is proposed | G4 production configuration |
-| RPC | Public Fuji URL from the existing runbook first; measure availability from the chosen host | G1, G4, G5 |
-| Source verifier | Select one Fuji-supported provider and confirm its endpoint before submitting source; see G3 | G3 |
-| Team allocation | Confirm who operates owner wallet, attester wallet, hosting and submission; capacity per person is still unconfirmed | Schedule commitment |
-| Event requirements | Reconfirm deadline, form, category/AI requirements, required links and media limits | Before final scope freeze/submission |
+| Hosting | Optional / deferred (`not started`); Vercel Hobby + `*.vercel.app` (or Node 24 fallback) prepared if time/team wants a live trial link | Optional G4 only |
+| Host account/plan | Personal Hobby project operated by one designated owner, subject to plan eligibility; account not yet selected/created. Proposed hosting/domain budget: USD 0 within included usage | Only if optional G4 runs |
+| App origin | `http://localhost:3000` for prioritized G5 localhost Fuji testing; stable `*.vercel.app` HTTPS domain only if optional G4 runs | G5 localhost / optional G4 |
+| RPC | Public Fuji URL from the existing runbook first; measure availability from the executed environment | G1, G5, optional G4 |
+| Source verifier | Completed on Avalanche Builder Hub (`https://build.avax.network/api/verify/43113/api`, public placeholder `builder-hub`); all 6 contracts `Exact match` | G3 (complete) |
+| Team allocation | Confirm who operates owner wallet, attester wallet, optional hosting and submission; capacity per person is still unconfirmed | Schedule commitment |
+| Event requirements | User-reported Nov 17 organizer recap: **GitHub → video → slides**, max **3-minute** video, **Vietnamese** presentation, **hosting optional**; revalidate portal fields/deadline before final submission | Before final submission |
 
-The organizer site [team1vn.xyz](https://team1vn.xyz/) was not accessible through the research tool on November 15. The recorded deadline is **2026-11-21 23:59 Asia/Ho_Chi_Minh** and Demo Day is recorded as November 30; neither date was freshly confirmed in this planning pass. If the selected category requires a live model, resolve that requirement before scope freeze instead of presenting mocked AI as live.
+The organizer site [team1vn.xyz](https://team1vn.xyz/) was not accessible through the research tool on November 15; the November 17 organizer-recap requirements above (**GitHub → video → slides**, max **3-minute** video, **Vietnamese** presentation, **hosting optional**) were reported directly by the user. The recorded deadline remains **2026-11-21 23:59 Asia/Ho_Chi_Minh** and Demo Day is recorded as November 30; revalidate final form fields and deadline before submission. Live AI remains outside the implemented baseline; template explanation stays active.
 
 ## 3. Work sequence and completion gates
 
-Dependency order: **G0 → G1 → G2 → G3/G4 → G5 → G6**. Source verification and hosting preparation may overlap after addresses exist. This is a two-person work split, not an instruction to spawn coding agents.
+Adjusted dependency order after G3 and the November 17 organizer recap: **G0 → G1 → G2 → G3 → Commit/PR #9 review → G5 (localhost against live Fuji) → G6 (README, ≤3m video, Vietnamese slides, submission)**, with **G4 (public HTTPS hosting) deferred as optional** if time permits or the team wants a public trial URL. Source verification and deployment are already complete; do not spawn coding agents.
 
 ### G0 — Freeze and prepare the execution checkout
 
 Estimated active effort: 0.5–1 hour.
 
-Technical preparation and the exact G2 execution source/artifact hashes are recorded in [the evidence bundle](releases/m7-fuji/README.md). Routine `git fetch`, non-destructive local branch preparation, artifact checks and read-only public RPC requests are within the requested preparation scope; they do not require a new permission question. Preserve existing diffs and respect any actual tool approval boundary. Documentation commit remains pending; do not call the current working tree clean. G2 used unchanged runtime source at the recorded reviewed SHA despite the preserved documentation diff.
+Technical preparation and the exact G2 execution source/artifact hashes are recorded in [the evidence bundle](releases/m7-fuji/README.md). Routine `git fetch`, non-destructive local branch preparation, artifact checks and read-only public RPC requests are within preparation scope; they do not require a new permission question. Preserve existing diffs and respect actual tool approval boundaries. G2 evidence is now committed at `bbbe441`; inspect current status before changing branches. The following preparation steps are historical/reusable checks, not a request to repeat completed G0–G2 work.
 
 1. Review and preserve this documentation diff. Before changing branches, inspect `git status`; do not reset, discard or overwrite pending work.
 2. Refresh Git refs, use a clean checkout containing merged PR #8, and record the exact source commit. If a follow-up branch is necessary, use `codex/m7-public-delivery`; keep one working checkout unless isolation is needed.
@@ -99,9 +100,9 @@ Estimated active effort: 1–2 hours including receipt review.
 
 ### G3 — Verify source and publish a reproducible deployment record
 
-Estimated active effort: 1–2 hours, excluding verifier delays.
+**Completed November 17.** Estimated active effort was 1–2 hours. All six deployed contracts passed Builder Hub verification (`https://build.avax.network/api/verify/43113/api`) with `v0.8.30+commit.73712a01`, `evm=cancun`, `200` runs, and IPFS metadata, matching canonical ABIs, Standard JSON sources, and creation constructor inputs, and confirmed publicly readable while signed out (`Exact match`); see [the G3 verification manifest](releases/m7-fuji/g3-verification-2026-11-17.json). Keep this historical reference below without rerunning verification.
 
-1. Select the verifier using current provider documentation and confirm Fuji support. The current [Builder Hub guide](https://build.avax.network/docs/tooling/contract-verification) documents its own API, not the Routescan API. Its [API reference](https://build.avax.network/docs/tooling/contract-verification/api-reference) parameterizes the chain ID; confirm Fuji is supported before choosing `https://build.avax.network/api/verify/43113/api`.
+1. Proposed primary verifier: Builder Hub at `https://build.avax.network/api/verify/43113/api`. Its read-only registry lookup returned HTTP 200 and an unverified-source response on November 16; source submission remains untested. The [focused handoff](M7_G3_G4_SESSION_PLAN.md) records the observation, public placeholder key and registry-first command. The [Builder Hub guide](https://build.avax.network/docs/tooling/contract-verification) and [API reference](https://build.avax.network/docs/tooling/contract-verification/api-reference) describe this provider's API, not Routescan.
 2. Routescan's previously recorded Fuji endpoint remains an alternative requiring fresh confirmation. Do not assume a verification submitted to one provider appears on all other explorers. No API key creation is implied by this plan.
 3. Use the exact build-info from deployment and the holder-aware commands in the runbook. Set `VERIFIER_URL` explicitly; do not substitute a different compiler/EVM target to make verification pass.
 4. Verify `RiskRegistry`, baseline, mint/pause, UUPS implementation, proxy and decoy. For the proxy, match both implementation address and initializer bytes. A proxy source page does not verify the implementation by itself.
@@ -110,11 +111,11 @@ Estimated active effort: 1–2 hours, excluding verifier delays.
 
 **Exit:** six inspected source pages, with registry source mandatory for submission; any incomplete suite verification remains an explicit delivery gap. Source verification of these owned deployments does not change the analyzer's `R-SOURCE-UNKNOWN` or its source-coverage limitation.
 
-### G4 — Deploy and verify the HTTPS web app
+### G4 — Optional HTTPS web app deployment (`deferred / optional`)
 
-Estimated active effort: 2–3 hours. Provider settings below are proposed and not yet deployed or tested on that provider.
+Estimated active effort: 2–3 hours (run only after prioritized G5 localhost proof / core G6 materials if time allows, or if the team explicitly wants a public trial link). Provider settings below are prepared proposals and remain **unexecuted (`pending` / `deferred`)** until authorized and deployed.
 
-**Recommended hosting: Vercel Hobby with the assigned `*.vercel.app` project domain.** The user confirmed no existing hosting/domain and asked for a suitable demo option. This recommendation follows the existing Next.js app and workspace layout: Vercel currently supports [Node 24](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions) and [pnpm 12](https://vercel.com/docs/package-managers). Compatibility is an inference from the documented platform support and repository configuration; it still requires a hosted build and smoke check.
+**Recommended hosting: Vercel Hobby with the assigned `*.vercel.app` project domain.** The user confirmed no existing hosting/domain and asked for a suitable demo option. Vercel documents [Node 24 support](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions) and [Corepack version pinning](https://vercel.com/docs/builds/configure-a-build). Use the repository's `pnpm@12.4.2` pin and confirm it in actual build logs; lockfile autodetection alone does not establish that version. Hosted compatibility remains an inference requiring a build and smoke check.
 
 The [Hobby plan](https://vercel.com/docs/plans/hobby) is free within included usage, and Vercel assigns a [project domain](https://vercel.com/docs/domains/working-with-domains) without requiring a custom-domain purchase. Proposed hosting/domain spend for this demo is **USD 0**. [Hobby terms](https://vercel.com/legal/terms) restrict use to personal or non-commercial purposes; use this recommendation for that demo scope, and revisit the plan if the project becomes commercial. Do not start a paid trial, add-on or domain purchase as part of setup.
 
@@ -122,7 +123,7 @@ Designate one hosting operator; the second teammate can contribute and review in
 
 | Setting | Proposed value / check |
 | --- | --- |
-| Repository/revision | `ChieNg00/AvaGuard`, reviewed `main` revision with passing CI |
+| Repository/revision | `ChieNg00/AvaGuard`; reviewed `main` after an authorized PR #9 merge, or an explicitly selected delivery branch. Record the actual deployed SHA and its CI; see the focused session plan |
 | Plan / operator | Hobby, one designated account owner; no paid collaboration feature required for the planned demo workflow |
 | Framework | Next.js |
 | Root Directory | `apps/web`; include files outside root so `packages/analyzer` and root lockfile are available |
@@ -142,11 +143,11 @@ Set these server variables for the production deployment:
 ```dotenv
 AVAGUARD_ENV=fuji
 FUJI_RPC_URL=https://api.avax-test.network/ext/bc/C/rpc
-REGISTRY_ADDRESS=<actual deployed RiskRegistry address>
+REGISTRY_ADDRESS=0x003D1f3C26FfAC734297979B1FC82914217C5392
 AVAGUARD_APP_ORIGIN=<exact production HTTPS origin>
 ```
 
-Use actual values in provider settings; the angle-bracket entries above are placeholders. Leave `AVAGUARD_AI_ENABLED` and `AVAGUARD_LOCAL_EXPLAIN_URL` unset. A Gemini key alone cannot enable the absent live adapter. No wallet secrets belong in hosting configuration. If using a provider RPC credential, keep it server-only and out of recorded logs.
+Use the actual assigned origin in provider settings; its angle-bracket entry above is a placeholder. Leave `AVAGUARD_AI_ENABLED` and `AVAGUARD_LOCAL_EXPLAIN_URL` unset. A Gemini key alone cannot enable the absent live adapter. No wallet secrets belong in hosting configuration. If using a provider RPC credential, keep it server-only and out of recorded logs.
 
 Provisioning/deployment starts only after the user selects the account/plan and authorizes publication. Record domain, source SHA, build URL, non-secret settings and rollback target. Rebuild/redeploy after changing environment values when required by the provider.
 
@@ -164,11 +165,13 @@ The host supplies the production environment, HTTPS termination and restart poli
 
 **Exit:** `/` and `/lookup` load publicly over HTTPS; anonymous scan works; production Server Actions reach Fuji; origin/chain/runtime checks pass; template provenance is honest; logs contain no credentials. Open in a signed-out browser to detect hosting access protection before calling the URL judge-ready.
 
-### G5 — Complete real-wallet acceptance and the report bundle
+### G5 — Real wallet acceptance and report bundle
+
+Completed on November 18 with Baseline and Mint/pause on port `3000`, then Proxy and Decoy on port `3001`. The checklist below documents the executed scope. See [the G5 acceptance record](releases/m7-fuji/g5-acceptance-2026-11-18.json).
 
 Estimated active effort: 2–3 hours.
 
-Run from the production origin with the real browser wallet, not only the CI wallet mock. Save actual outcomes in the evidence record.
+Because public hosting is optional per the organizer recap, **start G5 on `http://localhost:3000` configured directly against Avalanche Fuji (`43113`)** (`AVAGUARD_ENV=fuji`, `FUJI_RPC_URL=https://api.avax-test.network/ext/bc/C/rpc`, `REGISTRY_ADDRESS=0x003D1f3C26FfAC734297979B1FC82914217C5392`, and `AVAGUARD_APP_ORIGIN=http://localhost:3000` or unset) using the real injected browser wallet (`ATTESTER_ADDRESS = 0xc6f32290379CA39273306e3758aB0a2b813ce3eB`), not only the CI wallet mock. Save actual outcomes in the evidence record and **explicitly distinguish localhost Fuji checks from optional hosting-only checks** (signed-out public HTTPS access, Vercel Node 24 / `pnpm@12.4.2` build logs, `60s` Server Action budget, `AVAGUARD_APP_ORIGIN` HTTPS enforcement, Preview disabled, and hosted cold/warm latency remain `pending` / `deferred` unless G4 executes).
 
 | Case | Required observation |
 | --- | --- |
@@ -191,24 +194,24 @@ Publish and export all four showcase reports so each distributed JSON has a corr
 
 Registry freshness is limited: unchanged target codehash does not prove unchanged owner, proxy implementation or configuration. Do not describe it as full state monitoring. Use replay and a fresh scan for their separate purposes.
 
-Measure scan latency on the actual host: one first request plus three subsequent scans per demo target, with success/failure counts, range and median. Record timestamp, target, snapshot and whether the request was cold/warm. These are small-sample observations, not an SLA. Preserve the existing 30-second analyzer deadline and visible unavailable behavior.
+Measure scan latency on the executed environment (`localhost` -> Fuji RPC when deferred hosting is not run; optional Vercel host separately if G4 runs): one first request plus three subsequent scans per demo target, with success/failure counts, range and median. Record timestamp, target, snapshot, environment (`localhost` vs hosted) and whether the request was cold/warm. These are small-sample observations, not an SLA. Preserve the existing 30-second analyzer deadline and visible unavailable behavior.
 
-The versioned bundle starts with [docs/releases/m7-fuji/README.md](releases/m7-fuji/README.md), now containing G0/G1 evidence plus the completed G2 deployment manifest and strict readback. Four canonical analyzer JSON exports remain pending; operational G1/G2 JSON files do not satisfy that report requirement. Keep source revision/chain/registry/report hashes/transaction references together. Review the exact files, then publish under the user's authorization. Judges must be able to download raw report JSON without signing in; no hosted report database is promised.
+The release bundle records G0–G3 evidence and four preserved G5 canonical analyzer exports (`avaguard-<address>-<blockNumber>.json`). The report table links each JSON to its Fuji receipt and replay evidence. The acceptance record links the source revision, chain, registry, report hashes and transaction references. GitHub publication and signed-out access checks belong to G6. See [the report table](releases/m7-fuji/README.md#report-and-submission-ledger) and [the acceptance record](releases/m7-fuji/g5-acceptance-2026-11-18.json).
 
-**Exit:** real wallet publication and independent JSON import verified; four reports downloadable; replay outcomes and performance measurements recorded; any failed criterion remains visible. Synthetic timeout/replacement tests remain CI evidence unless the corresponding condition actually occurred live.
+**Exit:** real wallet publication and independent JSON import verified on Fuji; four reports downloadable; replay outcomes and localhost/Fuji latency measurements recorded; any unexecuted hosting-only checks explicitly retained as `pending`/`deferred`. Synthetic timeout/replacement tests remain CI evidence unless the corresponding condition actually occurred live.
 
 ### G6 — Freeze, record and submit
 
 Estimated active effort: 3–4 hours plus submission contingency.
 
-1. Freeze the working app/contracts and capture final source SHA, registry address, report hashes and host deployment ID. Later fixes require relevant checks; avoid editing frozen report bytes.
-2. Adapt [DEMO_SCRIPT.md](DEMO_SCRIPT.md) to observed Fuji values. Record one end-to-end scan → evidence/template → export → wallet publish → lookup/import → replay sequence. Show the decoy or unauthorized-account control.
-3. Keep the video within the confirmed event limit; the project target is 2–3 minutes. Edit waiting time transparently, without implying a delayed transaction was instant.
-4. Prepare five slides: problem; architecture; observed showcase cases; trust/coverage limits; verification and links. Distinguish templates/mocks from a live AI provider and bytecode capability indicators from proven privileges.
-5. Update README and the delivery ledger with real URLs, exact startup commands and a short judge path. Open app, repo, verified source, raw reports, video and slides while signed out.
-6. Reconfirm the official form/requirements. Prepare its exact entries for user review, submit only when authorized, and save the actual confirmation/receipt and submission time.
+1. Freeze the working app/contracts and capture final source SHA, registry address, report hashes (and host deployment ID only if optional G4 runs). Later fixes require relevant checks; avoid editing frozen report bytes.
+2. Adapt [DEMO_SCRIPT.md](DEMO_SCRIPT.md) to observed Fuji G5 values. Record one end-to-end scan → evidence/template → export → wallet publish → lookup/import → replay sequence. Show the decoy or unauthorized-account control.
+3. Keep the video within the confirmed organizer limit: **maximum 3m 00s** (target **2m 30s**), presented in **Vietnamese** (`GitHub → video → slides`). Edit waiting time transparently, without implying a delayed transaction was instant.
+4. Prepare five **Vietnamese** slides: problem; architecture; observed Fuji showcase cases; trust/coverage limits; verification and links. Distinguish templates/mocks from a live AI provider and bytecode capability indicators from proven privileges.
+5. Update README and the delivery ledger with verified links, exact startup commands and a short judge path. Open repo, verified Builder Hub sources, raw G5 reports, video and slides while signed out (and optional HTTPS URL only if G4 ran).
+6. Reconfirm the official form/requirements (`GitHub → video → slides`). Prepare its exact entries for user review, submit only when authorized, and save the actual confirmation/receipt and submission time.
 
-**Exit:** accessible submission package, observed acceptance evidence and actual submission confirmation. If no submission was made, report “package ready, submission pending,” not “M7 complete.”
+**Exit:** accessible submission package, observed G5 acceptance evidence, explicit `pending`/`deferred` status for any unrun optional G4 hosting checks, and actual submission confirmation. If no submission was made, report “package ready, submission pending,” not “M7 complete.”
 
 ## 4. Verification policy during execution
 
@@ -241,13 +244,12 @@ These are estimates, not confirmed availability. Budget roughly **11–18 active
 
 | Vietnam date | Target | Suggested responsibility, pending team agreement |
 | --- | --- | --- |
-| Nov 15 | G0; decide public addresses, host, operator and event constraints | Both review; user selects accounts/wallet roles |
-| Nov 16 | G1 and G2; keep full readback evidence | Deployment operator with local owner wallet; teammate reviews public inputs |
-| Nov 17 | G3 and G4; source pages and HTTPS app working | Contract operator handles verifier; web operator handles host |
-| Nov 18 | G5; complete real-wallet/report/replay checks; feature freeze | Attester operates wallet; teammate verifies from a fresh session |
-| Nov 19 | Record video and prepare slides/README | Presenter and reviewer |
-| Nov 20 | Final signed-out link checks; aim to submit early | Submission owner, with second-person review |
-| Nov 21 | Contingency before the recorded 23:59 deadline | Fix delivery blockers only; preserve proof of submission |
+| Nov 15 | G0; decide public addresses, host, operator and event constraints (complete) | Both review; user selects accounts/wallet roles |
+| Nov 16 | G1 and G2; keep full readback evidence (complete) | Deployment operator with local owner wallet; teammate reviews public inputs |
+| Nov 17 | G3 Builder Hub source verification (complete); commit/push G3 docs, PR #9 review, prepare G5 localhost | Contract operator verified sources; team aligns on recap priority |
+| Nov 18 | G5 real-wallet Fuji acceptance on localhost (`scan → export → publish → lookup/import → replay`), 4 canonical JSONs; feature freeze | Attester operates wallet on localhost; teammate verifies JSON/replay from fresh session |
+| Nov 19–20 | Record max-3m Vietnamese video, finish Vietnamese slides & README; run optional G4 Vercel Hobby hosting only if time/team wants it | Presenter and reviewer |
+| Nov 21 | Final signed-out link checks & contingency before the recorded 23:59 deadline | Submission owner, with second-person review |
 
 If capacity is three hours total per day, preserve the critical path and cut optional polish first. Do not add a live AI adapter, custom domain, database, additional chains, autonomous agents, new scoring rules or a visual redesign to this execution scope. An event requirement that conflicts with this scope needs an explicit decision and a revised estimate.
 
@@ -290,4 +292,4 @@ No token mint, pause, ownership transfer, proxy upgrade or attester revocation i
 
 ## 8. Immediate next session
 
-G2 is complete. Use its [execution record](releases/m7-fuji/G2_HANDOFF.md) and [receipt/readback evidence](releases/m7-fuji/README.md) as inputs to G3 source verification and G4 hosting. [M7_PUBLIC_DELIVERY_PROMPT.md](M7_PUBLIC_DELIVERY_PROMPT.md) carries the current continuation. Preserve the deployed addresses, source/build-info and documentation diff; do not restart wallet setup, funding or deployment. Source upload, hosting, browser report publication, commit/push and submission require their respective authorization; the G2 instruction did not include them.
+G2, G3 and G5 are complete. Review the local G3/G5 evidence diff and confirm current PR #9 requirements before authorized GitHub publication. Finalize the README, Vietnamese video of at most three minutes and Vietnamese slides for G6, then verify signed-out links. G4 public HTTPS hosting stays optional and deferred. Use [the release evidence](releases/m7-fuji/README.md) and [the G5 acceptance record](releases/m7-fuji/g5-acceptance-2026-11-18.json).

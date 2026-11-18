@@ -1,0 +1,80 @@
+{
+  "scope": "G5 DecoyConstantToken original export validation and browser observations from scan through current-state comparison",
+  "observedAtUtc": "2026-11-18T01:04:38.382Z",
+  "observationDateVietnam": "2026-11-18",
+  "appOrigin": "http://localhost:3001",
+  "sourceFilename": "avaguard-0xfa73c98ece0639cb86da211e98e742289de5fcd4-61260797.json",
+  "fileBytes": 9107,
+  "fileSha256": "238a8da67582613c4333f7affd30e963c882c0b0e297774b217ae71b6f677753",
+  "reportHash": "0x24ba4aa85cfeaf45a9e386603126dc0be24afc42fa4878d7da26c7ba92e9da29",
+  "chainId": "43113",
+  "address": "0xfa73c98ece0639cb86da211e98e742289de5fcd4",
+  "blockNumber": "61260797",
+  "blockHash": "0xd362e3a5f992808a62076d5ce8e25dc764297e7f66b7ec11e633c194b1a751f7",
+  "signalScore": 0,
+  "findings": [
+    "R-SOURCE-UNKNOWN"
+  ],
+  "coverageCounts": {
+    "checked": 11,
+    "notChecked": 6,
+    "unavailable": 0,
+    "notApplicable": 0
+  },
+  "validations": {
+    "strictSchema": true,
+    "exactCanonicalBytes": true,
+    "rawKeccakMatchesReportHash": true,
+    "reportHashAndFieldsMatchRegistry": true,
+    "sourceBytesUnchanged": true,
+    "allEightPublicationFieldsMatch": true,
+    "targetRuntimeAtSnapshotAndReceiptMatches": true
+  },
+  "browserScan": {
+    "status": "complete",
+    "chainId": "43113",
+    "snapshotBlockNumber": "61260797",
+    "score": 0,
+    "band": "Few signals",
+    "basis": "User screenshot",
+    "attachment": "codex-clipboard-31e5952f-99ad-4356-a769-cb813a224bed.png"
+  },
+  "browserLookup": {
+    "status": "one-publication",
+    "basis": "User screenshot",
+    "attachment": "codex-clipboard-ce615865-8478-486c-ba7b-12e1ba65fa1b.png"
+  },
+  "browserImport": {
+    "status": "commitment-matches",
+    "message": "Commitment matches. Hash and registry summary fields agree.",
+    "targetRuntimeCodeCheck": "unchanged",
+    "basis": "User screenshot",
+    "attachment": "codex-clipboard-6ed4baff-7e6e-4f52-a226-6fedf34bb76a.png"
+  },
+  "browserOriginalBlockReplay": {
+    "status": "replay-matches",
+    "message": "Original-block replay: replay-matches",
+    "originalBlockNumber": "61260797",
+    "basis": "User screenshot after importing the published report",
+    "attachment": "codex-clipboard-f2767c08-8ee9-482d-8f93-d846b90fa9a5.png"
+  },
+  "currentStateComparison": {
+    "status": "no-semantic-changes",
+    "message": "Current block 61260847 · No semantic changes.",
+    "currentBlockNumber": "61260847",
+    "currentBlockHash": null,
+    "basis": "User screenshot",
+    "attachment": "codex-clipboard-4d3cb3c8-56d2-410c-a481-afb8a3672fba.png",
+    "scopeNote": "The message covers the fields compared by AvaGuard. The screenshot supplies the block number."
+  },
+  "publicationEvidenceFile": "g5-decoy-publication-2026-11-18.json",
+  "g5AcceptanceEvidenceFile": "g5-acceptance-2026-11-18.json",
+  "transactionHash": "0xe1e1649cf826be7363aab7c4a36d44d8886d10d01984e08e024f17f199f64e7e",
+  "savedCanonicalFile": "avaguard-0xfa73c98ece0639cb86da211e98e742289de5fcd4-61260797.json",
+  "preservation": {
+    "copiedWithoutByteChanges": true,
+    "userOriginalUnchanged": true,
+    "rawExportNotReformatted": true
+  },
+  "attachmentNote": "Attachment names refer to the user's chat screenshots."
+}
