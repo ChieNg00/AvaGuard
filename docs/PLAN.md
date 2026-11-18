@@ -1,6 +1,6 @@
 # Implementation plan
 
-As reviewed and updated on 2026-11-15, M0 through M6 have recorded local verification and M6 is merged into main at `76857b1`. M7 local preparation is implemented on open PR #8 at `4937c72` (its two CI jobs and fresh local checks passed), and fixes for the five PR #8 delivery/runbook findings (`R1`–`R5` in [M7_REVIEW_AND_NEXT_PLAN.md](M7_REVIEW_AND_NEXT_PLAN.md)) are now implemented and tested locally in the working tree (uncommitted local diff pending review/CI/merge). M7 public delivery is not complete. M6 covers templates and mocked AI behavior, not a live provider. A separate sampled historical RPC probe succeeded; see RPC_HISTORY_CHECK.md. Keep capacity realistic for two people; extra hours are contingency, not guaranteed scope.
+Updated 2026-11-18. M0–M6 have recorded local verification. M7 preparation and R1–R5 fixes are merged at `c7bd311` with passing post-merge CI. G2 deployed six contracts on Fuji, G3 verified all six source pages on Builder Hub, and G5 completed real wallet acceptance with four matching reports and replays. G6 covers GitHub evidence, the README, a Vietnamese demo video of at most three minutes and Vietnamese slides. G4 HTTPS hosting is optional and deferred. See [the release evidence](releases/m7-fuji/README.md), [the execution plan](M7_EXECUTION_PLAN.md) and [the session plan](M7_G3_G4_SESSION_PLAN.md).
 
 | Milestone | Outcome | Completion evidence |
 | --- | --- | --- |
@@ -11,25 +11,26 @@ As reviewed and updated on 2026-11-15, M0 through M6 have recorded local verific
 | M4 Registry | Browser-attester publication API and report history with local tests | Authorization, snapshot fields, JSON body availability and explicit publisher trust |
 | M5 Vertical slice | Scan, report, publication UI and lookup | Local end-to-end flow and truthful incomplete/stale/error states |
 | M6 AI | Optional explanation with deterministic fallback | Same evidence/score with AI on/off; outage and injection tests |
-| M7 Delivery | Authorized Fuji deployment, hosted demo and submission package | Real addresses, verified source, accessible app/report links, video and slides |
+| M7 Delivery | Authorized Fuji deployment, verified source, real-wallet G5 acceptance, optional hosting, and submission package | Real addresses, Builder Hub `Exact match` pages, G5 localhost/hosted commitments & JSONs, max-3m video and Vietnamese slides |
 
-## Current local status & next bounded gate — M7 PR #8 delivery review fixes
+## Next bounded gate — prepare and execute M7 public delivery
 
-[M7_PR8_REVIEW_FIX_PROMPT.md](M7_PR8_REVIEW_FIX_PROMPT.md) defines the `R1`–`R5` fixes implemented in the local working tree on top of `4937c72`. The original [M7_PREPARATION_PROMPT.md](M7_PREPARATION_PROMPT.md) is historical scope for M7 preparation. No public Fuji deployment, explorer verification, real-wallet broadcast, or hosting has been authorized or executed yet.
+[M7_EXECUTION_PLAN.md](M7_EXECUTION_PLAN.md) defines dependencies, estimates, public inputs, localhost/optional-host configuration, acceptance evidence and recovery. Use [M7_PUBLIC_DELIVERY_PROMPT.md](M7_PUBLIC_DELIVERY_PROMPT.md) or [M7_G3_G4_SESSION_PLAN.md](M7_G3_G4_SESSION_PLAN.md) for Codex/Antigravity. The planning request authorizes preparation; it does not authorize public broadcast, source upload, hosting or submission.
 
-1. Make deployment read-back fail on incorrect owner/attester/proxy state or unavailable reads; add focused positive and negative regressions.
-2. Repair named encrypted-keystore creation/selection, the Linux script invocation and initial-holder-aware source-verification arguments.
-3. Re-run applicable checks, update the runbook and review the final PR head. Preserve the implemented local/Fuji configuration, demo contracts and report invariants.
-4. After separate authorization, execute the real Fuji deployment/source verification, publish the HTTPS app and record injected-wallet publication, canonical JSON retrieval and original-block replay evidence. Public addresses and a hosting target still need selection; credentials stay local.
-5. Prepare video/slides and verify submission links. A live AI adapter remains an optional separate task; the labeled template flow remains usable.
+1. G0–G1: preserve planning changes, synchronize the execution checkout to merged code, record CI/artifact identity, confirm public owner/attester/holder and hosting choices, then simulate without a signer. (Complete Nov 15–16.)
+2. G2 completed November 16: six-contract Fuji suite, all seven receipts successful, strict full initial-state readback passed at block `61141800`. Preserve this suite; do not redeploy.
+3. G3 completed November 17: all six deployed contracts verified `Exact match` on Avalanche Builder Hub and confirmed readable while signed out. Preserve frozen build-info/artifacts; do not re-verify.
+4. G5 completed November 18 on localhost against Fuji (`43113`). Four real wallet commitments, exports, independent imports and recorded replays are in [the acceptance record](releases/m7-fuji/g5-acceptance-2026-11-18.json).
+5. G6: freeze the demo, create the max-3-minute Vietnamese video and Vietnamese slides (`GitHub -> video -> slides`), update README, check signed-out repo/source/report/media links, and submit under explicit authorization. Live AI remains separate optional work.
+6. G4 (optional): deploy public HTTPS hosting (Vercel Hobby + `*.vercel.app`) if time allows and team wants a live trial link; hosting-specific checks stay `pending`/`deferred` until actually executed.
 
 ## Tentative calendar
 
-- Nov 15: fix/review PR #8 delivery findings and agree on the public deployment inputs.
-- Nov 16-17: authorized Fuji deployment/source verification, HTTPS hosting, real-wallet checks and recorded replay outcomes; cut unfinished optional checks.
-- Nov 18: feature freeze; aim for a complete deployable demo.
-- Nov 19-20: fix issues, verify links, record video and finish pitch.
-- Nov 21: contingency and submission before 23:59 Vietnam time.
+- Nov 15–16: G0, G1, G2 Fuji deployment & strict readback complete.
+- Nov 17: G3 Builder Hub source verification complete; BTC recap confirmed hosting optional, video <= 3m, Vietnamese presentation. Commit/push G3 docs + prepare G5 localhost run.
+- Nov 18: G5 real wallet acceptance completed with four verified receipts and canonical exports. Review the evidence and freeze the demo for G6.
+- Nov 19–20: record max-3m Vietnamese walkthrough, finish Vietnamese slides & README; optional G4 Vercel Hobby hosting if time permits.
+- Nov 21: verify signed-out links and submit early before the recorded 23:59 deadline.
 
 The submission deadline above is the repository's recorded target. The organizer page could not be accessed during the November 15 review; revalidate the deadline and submission requirements before delivery. No dates imply completed external work or confirmed team capacity.
 

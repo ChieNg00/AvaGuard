@@ -1,95 +1,66 @@
-# AvaGuard ERC20 risk signals on Avalanche
+# AvaGuard
 
-ERC-20 risk-signal workspace for Team1 Vietnam UniHack 2026. The local M5/M6 flow supports scanning, evidence-bound explanations, canonical report export, attester publication, lookup and independent replay. See [the local demo](docs/M5_DEMO.md) for startup commands and wallet setup.
+AvaGuard scans ERC-20 contracts on Avalanche Fuji and shows the evidence behind each risk signal. Each scan reads bytecode and state at one block. An authorized attester can record the report hash and summary in `RiskRegistry`. Anyone with the original JSON can look up that commitment and replay the scan at the original block.
 
-## Current status — 2026-11-15
+Built by Team1 for Vietnam UniHack 2026.
 
-- M0–M6 have recorded local verification. [M6 PR #7](https://github.com/ChieNg00/AvaGuard/pull/7) merged into `main` at `76857b1`; both CI jobs passed for final PR head `193391f`. See [PROGRESS.md](docs/PROGRESS.md) for the fresh merged-checkout checks and their limits.
-- Explanations work without a key. Optional AI behavior has been tested with local mocks only; no live Gemini adapter is implemented. Prompt v2 lets the model select validated evidence/check IDs and ordering; displayed conclusions remain deterministic.
-- Publication and receipt recovery previously required the local Anvil/loopback environment; M7 preparation now adds explicit `local` and `fuji` server/client configuration modes (`AVAGUARD_ENV`), reproducible `RiskRegistry` artifact identity checks (`scripts/verify-registry-identity.mjs`), deployable Fuji demo contracts (`packages/contracts/src/DemoTokens.sol` + `script/DeployDemo.s.sol`), user-run deployment/verification scripts (`scripts/fuji-deploy.sh`), and delivery/demo docs ([M7 delivery runbook](docs/M7_DELIVERY.md), [demo script](docs/DEMO_SCRIPT.md)).
-- Live Fuji broadcast, explorer source verification, real browser wallet smoke checks, public hosting, and submission recording remain user-executed after M7 preparation; see [M7 delivery runbook](docs/M7_DELIVERY.md) and [M7 execution guide](docs/M7_ANTIGRAVITY_PROMPT.md).
-- [M7 PR #8](https://github.com/ChieNg00/AvaGuard/pull/8) was opened at `4937c72`. The five PR #8 delivery/runbook review fixes (`R1`–`R5`) from the [review and next plan](docs/M7_REVIEW_AND_NEXT_PLAN.md) and [PR #8 fix prompt](docs/M7_PR8_REVIEW_FIX_PROMPT.md) have been implemented and verified locally in the working tree (uncommitted local diff awaiting review/commit/CI; no live Fuji deploy, explorer verification, or public hosting has been executed).
+## Review the Fuji evidence
 
-The M1/M2 sections below retain historical observations; use the current status, progress log and local demo for the implemented flow.
+Four reports were published with a real MetaMask attester on Fuji C-Chain (chain ID `43113`). All four original JSONs matched their registry commitments, and all four browser replays returned `replay-matches`. The independent registry readback checked the four reports together at block `61260827`. [G5 acceptance record](docs/releases/m7-fuji/g5-acceptance-2026-11-18.json)
 
-## Confirmed scope
+| Showcase | Signal score | Snapshot block | Original JSON | Publication |
+| --- | --- | --- | --- | --- |
+| DemoBaselineToken | 0 / 100 · Few signals | `61245287` | [JSON](docs/releases/m7-fuji/avaguard-0x58d42e6710764c1753cad885fa80916a1f516fec-61245287.json) | [Receipt](docs/releases/m7-fuji/g5-baseline-publication-2026-11-17.json) |
+| DemoMintPauseToken | 45 / 100 · Some signals | `61246821` | [JSON](docs/releases/m7-fuji/avaguard-0xe2f96ca00564cee3505ac3b22d4cf0f66b730ec6-61246821.json) | [Receipt](docs/releases/m7-fuji/g5-mintpause-publication-2026-11-18.json) |
+| DemoTokenProxy | 60 / 100 · Many signals | `61260485` | [JSON](docs/releases/m7-fuji/avaguard-0xffad3eb4fbb259b1e76f84a66d6c0d005864d61c-61260485.json) | [Receipt](docs/releases/m7-fuji/g5-proxy-publication-2026-11-18.json) |
+| DecoyConstantToken | 0 / 100 · Few signals | `61260797` | [JSON](docs/releases/m7-fuji/avaguard-0xfa73c98ece0639cb86da211e98e742289de5fcd4-61260797.json) | [Receipt](docs/releases/m7-fuji/g5-decoy-publication-2026-11-18.json) |
 
-- Two-person team; approximately three hours or more of availability per day. Whether that is per person remains to be clarified before assigning capacity.
-- Scan ERC-20 contract addresses on Avalanche Fuji C-Chain only.
-- Deterministic checks produce evidence and findings. AI explains them and cannot alter findings or scores.
-- Only authorized attesters may publish report commitments to a registry.
-- English interface first; a usable template report remains available when AI is disabled or fails.
-- Prioritize stability and verifiable results. Transaction simulation, mainnet scanning and autonomous investigation are outside the first MVP.
-- Submission deadline: 2026-11-21 23:59 Asia/Ho_Chi_Minh. Final Demo Day: 2026-11-30.
+The deployment includes the registry, four showcase targets and the proxy implementation. Builder Hub source verification returned `Exact match` for all six. Find their addresses, source pages and deployment receipts in the [Fuji release evidence](docs/releases/m7-fuji/README.md). The [Vietnamese recording script and five-slide outline](docs/DEMO_SCRIPT.md) use the same reports. The recorded video and exported slide deck are pending.
 
-## Start here
+## Run the Fuji demo locally
 
-1. Read `docs/PRODUCT_SPEC.md`, `docs/SCANNER_SPEC.md` and `docs/DECISIONS.md` together.
-2. Read `docs/THREAT_MODEL.md` and `docs/ACCEPTANCE.md` before implementation.
-3. Open this folder as the working project in Codex or Antigravity.
-4. Review the current status and latest entries in `docs/PROGRESS.md`.
-5. Follow the local demo above. For the next implementation request, use `docs/M7_PR8_REVIEW_FIX_PROMPT.md`; the original M7 preparation prompts describe the work already implemented on PR #8.
-
-Codex recognizes AGENTS.md as project guidance. For Antigravity, explicitly ask it to read the file; automatic discovery has not been verified. INIT_PROMPT.md is ordinary portable project text, not a claim about an IDE-specific configuration format.
-
-## Files
-
-- `AGENTS.md`: durable working instructions.
-- `INIT_PROMPT.md`: English prompt for discovery and initial scaffold only.
-- `docs/PRODUCT_SPEC.md`: behavior, architecture and proposed data contract.
-- `docs/SCANNER_SPEC.md`: v2 snapshot, dispatcher/proxy rules, scoring, coverage and canonical hash specification.
-- `docs/DECISIONS.md`: confirmed choices, recommendations and open questions.
-- `docs/THREAT_MODEL.md`: trust boundaries and failure behavior.
-- `docs/ACCEPTANCE.md`: observable acceptance cases and demo requirements.
-- `docs/PLAN.md`: milestones and a tentative two-person schedule.
-- `docs/SOURCES.md`: source provenance and facts requiring revalidation.
-- `docs/PHASE_PROMPTS.md`: bounded implementation prompts after discovery/foundation.
-- `docs/RPC_HISTORY_CHECK.md`: actual read-only RPC observations and their limits.
-
-The separate read-only infrastructure probe remains scripts/probe_fuji_history.py; historical results are in docs/checks/. See verified M1 commands below.
-
-## M1 foundation — verified 2026-11-10
-
-The current checkout is `C:/Users/LENOVO/Documents/Codex/AvaGuard` (the earlier `ai-agent-security/AvaGuard` path no longer exists).
-
-- `apps/web`: English Scan and Lookup shells. Address format validation is local only. No chain reads or invented reports; replay and fresh-scan actions are separate, visibly planned.
-- `packages/analyzer`: strict versioned result-envelope schema and 22 boundary tests. See `docs/M1_SCHEMA.md` for its intentional incompleteness. This is not a canonical/hash/publication implementation.
-- `packages/contracts`: Foundry local read-probe fixture and two tests, including 256 fuzz runs. No registry or deployment script.
-- `fixtures`: explicitly synthetic unavailable-state JSON used by schema tests.
-
-Use Windows Node **24.19.0** and pnpm **12.4.2** for JavaScript. Foundry **1.9.0** is installed in Ubuntu WSL2 at `~/.foundry/bin`; no shell-profile modification was needed. Solidity is pinned to **0.8.30**, EVM **cancun**, optimizer enabled with **200** runs.
-
-From the repository root in PowerShell:
+Use Node 24 and pnpm 12.4.2. Run from the repository root in PowerShell.
 
 ```powershell
 pnpm install --frozen-lockfile
-pnpm typecheck
-pnpm lint
-pnpm test
+
+$env:AVAGUARD_ENV = 'fuji'
+$env:FUJI_RPC_URL = 'https://api.avax-test.network/ext/bc/C/rpc'
+$env:REGISTRY_ADDRESS = '0x003D1f3C26FfAC734297979B1FC82914217C5392'
+$env:AVAGUARD_APP_ORIGIN = 'http://localhost:3001'
+$env:AVAGUARD_AI_ENABLED = '0'
+
 pnpm build
-pnpm dev
+pnpm --filter @avaguard/web start -H 127.0.0.1 -p 3001
 ```
 
-Open [Scan](http://localhost:3000/) and [Lookup](http://localhost:3000/lookup) while the local server is running. No environment variables, wallet or API key are needed for M1. The optional `.env.example` contains an unused placeholder; do not configure it for the shell.
+Open [Scan](http://localhost:3001/) and check for `Avalanche Fuji · 43113` in the header. This configuration uses the labeled `Template explanation`. A wallet is needed for publication by an authorized attester. Scan, lookup, import and replay work in a browser without a wallet.
 
-Contract checks from PowerShell at the current checkout location:
+### Reproduce the Mint/pause report
 
-```powershell
-wsl -d Ubuntu -- bash -lc 'cd /mnt/c/Users/LENOVO/Documents/Codex/AvaGuard/packages/contracts && ~/.foundry/bin/forge fmt --check && ~/.foundry/bin/forge build --build-info && ~/.foundry/bin/forge test -vv'
+1. Save the [original Mint/pause JSON](docs/releases/m7-fuji/avaguard-0xe2f96ca00564cee3505ac3b22d4cf0f66b730ec6-61246821.json) without editing it.
+2. Open [Lookup](http://localhost:3001/lookup), enter `0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6` and select **Find latest**. To select the recorded G5 publication, enter history index `0` and select **Read history entry**. Check that the snapshot is `61246821`.
+3. Import the JSON. The app shows `Commitment matches. Hash and registry summary fields agree.`
+4. Select **Replay original block**. When the RPC serves that snapshot, look for `Original-block replay: replay-matches`. **Scan current state** compares the report with a new snapshot.
+
+To inspect a new snapshot, enter the same address on **Scan** and select **Scan contract**. **Export canonical JSON** saves that scan's report. Each export belongs to the block shown in its report.
+
+## How the evidence fits together
+
+```mermaid
+flowchart LR
+  Chain["ERC-20 state on Fuji"] --> Scan["Analyze one block"]
+  Scan --> JSON["Canonical JSON export"]
+  Scan --> Wallet["Attester signs in MetaMask"]
+  Wallet --> Registry["RiskRegistry stores hash and summary"]
+  Registry --> Lookup["Lookup, import and replay"]
+  JSON --> Lookup
 ```
 
-For a different checkout path, adjust only the `cd` directory. On a new machine, install Foundry from the [official installer](https://getfoundry.sh/introduction/installation/) and select `foundryup --install v1.9.0`. The first build downloads pinned solc if missing. Web and contracts build locally; Foundry tests make no network transactions.
+The scanner records chain ID, block number, block hash, findings, coverage and observation methods. A signal score summarizes the weighted findings from those checks. The Mint/pause example has mint and pause dispatcher matches and an owner address with no runtime code at the snapshot. The Decoy example produced no weighted finding. `R-SOURCE-UNKNOWN` is a scope note about analyzer coverage. Builder Hub source verification is tracked in the deployment evidence.
 
-The initial lockfile was generated with `pnpm install --lockfile-only` before the successful frozen install. Keep one root `pnpm-lock.yaml`. Exact direct dependencies are pinned in manifests. Wallet/viem, Tailwind, OpenZeppelin and AI dependencies are deferred until needed; basic CSS and dependency-free Solidity tests keep M1 small.
+## Contributor references
 
-Verified: frozen install, typecheck, warning-free lint after configuration repair, 22 schema tests, production build, Foundry format/build/tests, and HTTP 200 plus SSR limitation-text checks for both routes. Browser interaction/visual QA was not executed; opening the preview tab returned queued. See `docs/PROGRESS.md` for command evidence and remaining scope. Stop at M1; M2 requires a separate request.
-
-## M2 evidence collection — 2026-11-12
-
-The analyzer now provides a bounded same-block read adapter and evidence schema. Results are unscored and always not publishable. See docs/M2_EVIDENCE.md for API/configuration, error handling, proxy gaps and reproducible checks.
-
-New required check: `pnpm test:integration` starts account-free Anvil in Ubuntu WSL2, loads the existing fixture runtime without deploying or sending transactions, tests collection and exact replay, then shuts down its own node. Run the contract build command above first to generate the fixture artifact. Port 18545 must be free. No RPC or AI credentials are needed.
-
-M2 adds pinned viem 2.57.18 for ABI/keccak utilities. The root lockfile was updated before frozen installation. Current checks: 77 unit/mock/schema tests, 2 local Anvil integration tests, existing 2 Forge tests (including 256 fuzz cases), typecheck/lint/build. The UI still validates address input only; full scan/lookup/replay remains unavailable. M1 observations above are historical and do not imply those features were added.
-
-No new live Fuji scans, golden score changes, registry, AI or deployment. M3 is a separate milestone.
+- [Product scope](docs/PRODUCT_SPEC.md), [scanner rules and limits](docs/SCANNER_SPEC.md), [trust boundaries](docs/THREAT_MODEL.md), [acceptance tests](docs/ACCEPTANCE.md) and [decisions](docs/DECISIONS.md).
+- [Local Anvil and automated checks](docs/M5_DEMO.md), [Fuji delivery runbook](docs/M7_DELIVERY.md), [recording and slide outline](docs/DEMO_SCRIPT.md) and [milestone progress](docs/PROGRESS.md).
+- [Implementation plan](docs/PLAN.md), [session plan](docs/M7_G3_G4_SESSION_PLAN.md), [source notes](docs/SOURCES.md), [historical RPC observations](docs/RPC_HISTORY_CHECK.md) and [project instructions](AGENTS.md).

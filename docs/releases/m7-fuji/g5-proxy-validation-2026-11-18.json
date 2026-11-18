@@ -1,0 +1,90 @@
+{
+  "scope": "G5 DemoTokenProxy original canonical export validation and user-observed browser lookup, import, original-block replay and current-state comparison",
+  "observedAtUtc": "2026-11-18T00:55:17.782Z",
+  "observationDateVietnam": "2026-11-18",
+  "appOrigin": "http://localhost:3001",
+  "sourceFilename": "avaguard-0xffad3eb4fbb259b1e76f84a66d6c0d005864d61c-61260485.json",
+  "fileBytes": 21683,
+  "fileSha256": "1a24cd3ae07db327138e0d524eb8bcd54b1c238896aefa8cb2a82d26e4d3b3b6",
+  "reportHash": "0x724dd734f49619e424fb4fab049daabc2f03e0a6b8ec67e404c085aa821ad807",
+  "chainId": "43113",
+  "address": "0xffad3eb4fbb259b1e76f84a66d6c0d005864d61c",
+  "blockNumber": "61260485",
+  "blockHash": "0x5614724e81820ef86851127689da03e5a3ee2454e9de623ec785600cc87c25cf",
+  "signalScore": 60,
+  "proxy": {
+    "kind": "erc1967",
+    "status": "resolved",
+    "implementation": "0x3e56446cacf6aa3d77157de83c449c837d45064d",
+    "implementationCodeHash": "0x4e50168d070b49b0679285ddad2b81c660761bc16a5a0c949051c5ee7a8abae3",
+    "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+  },
+  "findings": [
+    "R-MINT",
+    "R-OWNER-EOA",
+    "R-PROXY",
+    "R-SOURCE-UNKNOWN"
+  ],
+  "coverageCounts": {
+    "checked": 14,
+    "notChecked": 6,
+    "unavailable": 0,
+    "notApplicable": 0
+  },
+  "validations": {
+    "strictSchema": true,
+    "exactCanonicalBytes": true,
+    "rawKeccakMatchesReportHash": true,
+    "reportHashAndFieldsMatchRegistry": true,
+    "sourceBytesUnchanged": true,
+    "allEightPublicationFieldsMatch": true,
+    "targetAndImplementationRuntimeMatchSnapshot": true,
+    "erc1967SlotMatchesExport": true
+  },
+  "browserLookup": {
+    "status": "one-publication",
+    "snapshotBlockNumber": "61260485",
+    "attestedScore": 60,
+    "basis": "User screenshot",
+    "attachment": "codex-clipboard-924a7379-62cb-415c-9d01-7d15cc744af3.png"
+  },
+  "browserImport": {
+    "status": "commitment-matches",
+    "message": "Commitment matches. Hash and registry summary fields agree.",
+    "targetRuntimeCodeCheck": "unchanged",
+    "basis": "User screenshot",
+    "attachment": "codex-clipboard-85ebcfe6-0f05-4af5-a3b6-6fdcf0133a71.png"
+  },
+  "browserOriginalBlockReplay": {
+    "status": "replay-matches",
+    "message": "Original-block replay: replay-matches",
+    "originalBlockNumber": "61260485",
+    "basis": "User screenshot after importing the published report",
+    "attachment": "codex-clipboard-bb7e258d-5d3f-4c74-a4c2-a42735784d6c.png",
+    "independentlyRerunThisSession": false
+  },
+  "currentStateComparison": {
+    "status": "no-semantic-changes",
+    "message": "Current block 61260576 · No semantic changes.",
+    "currentBlockNumber": "61260576",
+    "currentBlockHash": null,
+    "basis": "User screenshot",
+    "attachment": "codex-clipboard-32d7ad3b-fcf5-4246-a95a-5069f18fd440.png",
+    "scopeNote": "The message describes the fields compared by AvaGuard. The screenshot supplies the block number.",
+    "independentlyRerunThisSession": false
+  },
+  "publicationEvidenceFile": "g5-proxy-publication-2026-11-18.json",
+  "transportRecoveryEvidenceFile": "g5-localhost-transport-recovery-2026-11-18.json",
+  "g5AcceptanceEvidenceFile": "g5-acceptance-2026-11-18.json",
+  "transactionHash": "0x78e44d1cfc5afdd31cbe4bbaef673de8f2dd14d9217b1b06a0483fe11db7e053",
+  "savedCanonicalFile": "avaguard-0xffad3eb4fbb259b1e76f84a66d6c0d005864d61c-61260485.json",
+  "preservation": {
+    "copiedWithoutByteChanges": true,
+    "userOriginalUnchanged": true,
+    "rawExportNotReformatted": true
+  },
+  "attachmentNote": "Attachment names refer to the user's chat screenshots.",
+  "remainingAcceptance": {
+    "hosting": "optional / deferred"
+  }
+}

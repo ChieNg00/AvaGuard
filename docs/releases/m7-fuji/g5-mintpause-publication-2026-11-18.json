@@ -1,0 +1,102 @@
+{
+  "scope": "Independent read-only verification of the user-signed G5 DemoMintPauseToken Fuji publication and original canonical export; subsequent browser import/replay/current-state observations are recorded in the linked validation file",
+  "observedAtUtc": "2026-11-17T17:45:52.532Z",
+  "updatedAtUtc": "2026-11-17T18:49:15.000Z",
+  "observationDateVietnam": "2026-11-18",
+  "chainId": "43113",
+  "rpcUrl": "https://api.avax-test.network/ext/bc/C/rpc",
+  "sourceCommit": "c7bd311cfb8d0253dedec9719c2d50a542963792",
+  "registryAddress": "0x003D1f3C26FfAC734297979B1FC82914217C5392",
+  "registryRuntimeHash": "0x4fae2a424c444bfdc1c89924898d33a63b25b30a5ece9ed3bb4c1fbe96397b38",
+  "targetContract": "DemoMintPauseToken",
+  "transactionHash": "0xe1ba2e32585c0fcedab582c3e71618b81b3261c870744e6e56bfc6f593eb03f2",
+  "transaction": {
+    "from": "0xc6f32290379ca39273306e3758ab0a2b813ce3eb",
+    "to": "0x003d1f3c26ffac734297979b1fc82914217c5392",
+    "nonce": "2",
+    "valueWei": "0",
+    "functionName": "publish",
+    "input": "0x89fa044e000000000000000000000000e2f96ca00564cee3505ac3b22d4cf0f66b730ec6000000000000000000000000000000000000000000000000000000000000002d8712e715e35d2ec8656efab950c69879de0c5481bc9012f24a23b4b6f40b13040000000000000000000000000000000000000000000000000000000000000000f8fb1ca6fae7e6ebb9e79694c30c1e1a89834c0aa6ad89997634d67d04cdc74c00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000003a68d651a027631c7fb2ef6b86fd77e1c6bf9cf04f7b5bec36ecc94978ea567bd530a12"
+  },
+  "receipt": {
+    "status": 1,
+    "blockNumber": "61247120",
+    "blockHash": "0xce45771f4557aec529827670ea758ac19a297eddf897f1e0e18195cc17221ce7",
+    "gasUsed": "260009",
+    "effectiveGasPriceWei": "160",
+    "totalFeeWei": "41601440"
+  },
+  "publication": {
+    "target": "0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6",
+    "score": 45,
+    "codehash": "0x8712e715e35d2ec8656efab950c69879de0c5481bc9012f24a23b4b6f40b1304",
+    "implementation": "0x0000000000000000000000000000000000000000",
+    "reportHash": "0xf8fb1ca6fae7e6ebb9e79694c30c1e1a89834c0aa6ad89997634d67d04cdc74c",
+    "rulesetVersion": 1,
+    "blockNumber": "61246821",
+    "blockHash": "0x1a027631c7fb2ef6b86fd77e1c6bf9cf04f7b5bec36ecc94978ea567bd530a12"
+  },
+  "storedCommitmentAtReceiptBlock": {
+    "report": {
+      "target": "0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6",
+      "score": 45,
+      "codehash": "0x8712e715e35d2ec8656efab950c69879de0c5481bc9012f24a23b4b6f40b1304",
+      "implementation": "0x0000000000000000000000000000000000000000",
+      "reportHash": "0xf8fb1ca6fae7e6ebb9e79694c30c1e1a89834c0aa6ad89997634d67d04cdc74c",
+      "rulesetVersion": 1,
+      "blockNumber": "61246821",
+      "blockHash": "0x1a027631c7fb2ef6b86fd77e1c6bf9cf04f7b5bec36ecc94978ea567bd530a12"
+    },
+    "attester": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "publishedAt": "1794937263"
+  },
+  "reportPublishedEvent": {
+    "target": "0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6",
+    "reportHash": "0xf8fb1ca6fae7e6ebb9e79694c30c1e1a89834c0aa6ad89997634d67d04cdc74c",
+    "attester": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "score": 45,
+    "codehash": "0x8712e715e35d2ec8656efab950c69879de0c5481bc9012f24a23b4b6f40b1304",
+    "implementation": "0x0000000000000000000000000000000000000000",
+    "rulesetVersion": 1,
+    "blockNumber": "61246821",
+    "blockHash": "0x1a027631c7fb2ef6b86fd77e1c6bf9cf04f7b5bec36ecc94978ea567bd530a12",
+    "publishedAt": "1794937263"
+  },
+  "reportCountAtReceiptBlock": "1",
+  "latestReportAtReceiptBlock": {
+    "report": {
+      "target": "0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6",
+      "score": 45,
+      "codehash": "0x8712e715e35d2ec8656efab950c69879de0c5481bc9012f24a23b4b6f40b1304",
+      "implementation": "0x0000000000000000000000000000000000000000",
+      "reportHash": "0xf8fb1ca6fae7e6ebb9e79694c30c1e1a89834c0aa6ad89997634d67d04cdc74c",
+      "rulesetVersion": 1,
+      "blockNumber": "61246821",
+      "blockHash": "0x1a027631c7fb2ef6b86fd77e1c6bf9cf04f7b5bec36ecc94978ea567bd530a12"
+    },
+    "attester": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "publishedAt": "1794937263"
+  },
+  "publishedAtUtc": "2026-11-17T17:41:03.000Z",
+  "checks": {
+    "successfulReceipt": true,
+    "chainAndSenderAndDestinationMatch": true,
+    "zeroNativeValue": true,
+    "registryRuntimeMatchesFrozenG2": true,
+    "calldataEventStoredCommitmentAndCanonicalExportAgree": true,
+    "attesterAuthorizedAtReceiptBlock": true,
+    "receiptBlockHashVerified": true,
+    "originalReportHeaderHashVerified": true,
+    "targetCodeAtSnapshotAndReceiptMatches": true,
+    "bothHeaderHashesAndChainRechecked": true
+  },
+  "canonicalExportFilename": "avaguard-0xe2f96ca00564cee3505ac3b22d4cf0f66b730ec6-61246821.json",
+  "canonicalValidationFile": "g5-mintpause-validation-2026-11-18.json",
+  "browserPublication": {
+    "status": "confirmed-publication",
+    "basis": "user-provided screenshot",
+    "attachment": "codex-clipboard-a209d8ee-12af-437f-955b-963fe59d448a.png"
+  },
+  "historicalReplayStatus": "replay-matches observed in subsequent user screenshot; see canonicalValidationFile for provenance. The assistant did not independently rerun analyzer replay.",
+  "assistantActions": "Read-only public Fuji RPC, local export validation and evidence preservation; no signing or transaction broadcast"
+}

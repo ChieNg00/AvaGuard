@@ -1,0 +1,105 @@
+{
+  "scope": "G5 observation of a Local Anvil transport failure during the proxy showcase and read-only recovery using the Fuji production app on a separate loopback port",
+  "observationDateVietnam": "2026-11-18",
+  "targetContract": "DemoTokenProxy",
+  "targetAddress": "0xFfAd3eb4FbB259B1e76f84A66d6C0D005864d61c",
+  "userBrowserObservation": {
+    "origin": "http://localhost:3000",
+    "attachment": "codex-clipboard-962fa486-a4f2-4216-8536-30fa5c57b95f.png",
+    "status": "inconclusive",
+    "reason": "transport",
+    "signalScore": null,
+    "snapshotBlock": null,
+    "coverageCounts": {
+      "checked": 0,
+      "unavailable": 2,
+      "outsideScope": 14
+    },
+    "unavailableCoverageIds": [
+      "rules",
+      "snapshot-workflow"
+    ],
+    "basis": "User screenshot shows the result and origin. The app mode was identified by checking the running server and reproducing its result."
+  },
+  "diagnosis": {
+    "originalOrigin": "http://localhost:3000",
+    "renderedNetworkLabel": "Local Anvil · 43113",
+    "observedServerKind": "Next.js development",
+    "localConfig": {
+      "mode": "local",
+      "rpcKind": "loopback"
+    },
+    "browserReproduction": {
+      "observedAtUtc": "2026-11-18T00:32:54.516Z",
+      "outcome": "inconclusive",
+      "resultText": "transport · No score available",
+      "coverageText": "Coverage · 0 checked · 2 unavailable · 14 outside scope",
+      "publicationControlsRendered": false,
+      "canonicalExportRendered": false,
+      "browser": "Edge headless",
+      "walletAttached": false
+    },
+    "directPublicFujiControl": {
+      "observedAtUtc": "2026-11-18T00:28:00.523Z",
+      "chainId": "43113",
+      "status": "complete",
+      "snapshotBlock": "61259813",
+      "snapshotHash": "0xff9d4fac764b67a9d63e9176ce865fc7357054d910d719856b34864276bce676",
+      "score": 60,
+      "band": "Many signals",
+      "proxyKind": "erc1967",
+      "implementation": "0x3e56446cacf6aa3d77157de83c449c837d45064d",
+      "elapsedMs": 4420
+    }
+  },
+  "fujiRecovery": {
+    "origin": "http://localhost:3001",
+    "bind": "127.0.0.1:3001",
+    "startedAtUtc": "2026-11-18T00:29:40.6614013Z",
+    "buildId": "sh3PytN4IwWd6Uaejrx2H",
+    "serverKind": "Next.js production",
+    "registryAddress": "0x003D1f3C26FfAC734297979B1FC82914217C5392",
+    "rpcUrl": "https://api.avax-test.network/ext/bc/C/rpc",
+    "configuration": "Explicit process variables on a separate loopback listener using the existing production build",
+    "browser": "Edge headless",
+    "walletAttached": false,
+    "scan": {
+      "observedAtUtc": "2026-11-18T00:32:57.078Z",
+      "networkLabel": "Avalanche Fuji · 43113",
+      "chainId": "43113",
+      "snapshotBlock": "61259992",
+      "snapshotHash": "0x97d4aa0a60f9e2fd389a54b2a613f799ccb8cfcafafbd5d85c1a6d302dbe0dff",
+      "score": 60,
+      "band": "Many signals",
+      "findings": [
+        "R-MINT · high · +25",
+        "R-OWNER-EOA · medium · +10",
+        "R-PROXY · high · +25",
+        "R-SOURCE-UNKNOWN · info · +0"
+      ],
+      "elapsedMs": 5000,
+      "templateExplanationVisible": true,
+      "exportEnabled": true,
+      "checkWalletEnabled": true,
+      "publishDisabledBeforeWalletCheck": true
+    },
+    "lookup": {
+      "observedAtUtc": "2026-11-18T00:32:54.831Z",
+      "baselineExistingCommitmentFound": true,
+      "baselineSnapshotBlock": "61245287",
+      "proxyHasPublication": false,
+      "proxyNoPublicationMessageVisible": true
+    }
+  },
+  "acceptance": {
+    "inconclusiveOrEmptyCode": "The Local Anvil transport failure showed no numeric score and no publication controls. The earlier localhost Fuji run separately recorded the empty-code case.",
+    "earlierFujiReadOnlyEvidenceFile": "g5-localhost-readonly-2026-11-17.json",
+    "updatedAtUtc": "2026-11-18T01:06:03.796Z",
+    "proxyValidationEvidenceFile": "g5-proxy-validation-2026-11-18.json",
+    "g5AcceptanceEvidenceFile": "g5-acceptance-2026-11-18.json",
+    "completedShowcaseFlows": 4,
+    "totalShowcaseFlows": 4,
+    "hosting": "optional / deferred"
+  },
+  "attachmentNote": "Attachment name refers to the user's chat screenshot."
+}

@@ -1,0 +1,32 @@
+{
+  "scope": "G1 read-only public account preflight; no signer, simulation or transaction",
+  "observedAtUtc": "2026-11-15T21:03:10.321Z",
+  "sourceCommit": "c7bd311cfb8d0253dedec9719c2d50a542963792",
+  "rpcUrl": "https://api.avax-test.network/ext/bc/C/rpc",
+  "chainId": "43113",
+  "blockNumber": "61136744",
+  "blockHash": "0x79b809627873c800fec48c97c72a3d94bb1a1aea8976586028857562eeb3c985",
+  "headerRecheckPassed": true,
+  "addressChecks": {
+    "strictChecksum": true,
+    "nonzero": true,
+    "distinct": true
+  },
+  "owner": {
+    "address": "0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1",
+    "balanceWei": "0",
+    "balanceAvax": "0",
+    "nonce": "0",
+    "codeBytes": 0,
+    "code": "0x"
+  },
+  "attester": {
+    "address": "0xc6f32290379CA39273306e3758aB0a2b813ce3eB",
+    "balanceWei": "500000000000000000",
+    "balanceAvax": "0.5",
+    "nonce": "0",
+    "codeBytes": 0,
+    "code": "0x"
+  },
+  "initialHolder": "0xC9AA1b7E3773Fe270da206DE551bbBe7FCE34fD1"
+}

@@ -1,54 +1,116 @@
-# AvaGuard 2–3 Minute Demo Script & Slide Outline
+# AvaGuard — Kịch bản quay và nội dung slide
 
-Target runtime: **2m 30s** (max 3m 00s). Show observed behavior strictly as risk signals + snapshot evidence — never describe a `0 / 100` score as a safety guarantee or audit.
+Timeline dự kiến là **2 phút 48 giây**, chừa 12 giây so với giới hạn 3 phút. Người trình bày tự thao tác trên app, thuyết minh bằng tiếng Việt và dùng các nhãn tiếng Anh trên giao diện làm mốc chỉ dẫn. Bản quay dùng lượt quét mới để trình diễn **Scan** và **Export**, rồi dùng báo cáo G5 đã ký để trình diễn **Lookup**, **Import** và **Replay**.
 
-## 1. Timed Recording Script (6 Beats)
+## Chuẩn bị trước khi quay
 
-### Beat 1 — Snapshot-Bound Scan & Honest Banding (~25s)
-- **Screen**: Open `/` (`Avalanche Fuji · 43113` or `Local Anvil · 43113`). Paste `DemoMintPauseToken` (`AGMP`) and click **Scan contract**.
-- **Narration**: *"AvaGuard scans ERC-20 bytecode and state on a single pinned block header — chain 43113, exact block number, and block hash — so reads cannot tear across blocks. Notice `DemoMintPauseToken` scores `45 / 100 · Some signals`, with explicit coverage next to the score."*
+- Mở [Scan](http://localhost:3001/) và [Lookup](http://localhost:3001/lookup). Kiểm tra phía trên hiện `Avalanche Fuji · 43113`. Dùng lệnh khởi động trong [README](../README.md) nếu app chưa chạy.
+- Đặt JSON G5 Mint/pause vào một thư mục dễ tìm. Chọn thư mục khác cho file xuất trong lúc quay để tên file và snapshot dễ phân biệt.
+- Mở bảng kết quả G5 ở cuối video. Với phần ví ký, dùng đoạn đã ghi hoặc hồ sơ giao dịch G5 và ghi rõ rằng đây là lần publish đã thực hiện. Tại Lookup, chọn bản ghi theo snapshot trong bảng dưới đây.
 
-### Beat 2 — Evidence-Bound Explanation & Contrast Cases (~35s)
-- **Screen**: Point to the findings (`R-MINT`, `R-OWNER-EOA`, `R-PAUSE`, `R-SOURCE-UNKNOWN`) and their evidence IDs. Quickly scan `DemoBaselineToken` (`0 / 100 · Few signals`) and `DecoyConstantToken` (`0 / 100 · Few signals`), then scan `DemoTokenProxy` (`AGUP`, `60 / 100 · Many signals · erc1967`).
-- **Narration**: *"Every finding cites concrete evidence IDs rather than raw guesses. An ordinary token (`DemoBaselineToken`) scores `0`, and a decoy contract (`DecoyConstantToken`) with selector constant bytes (`mint(address,uint256)`) and no supported dispatcher evidence also stays `0 / 100 · Few signals` (absence of dispatcher signals is not proof that matching functions are harmless), while `DemoTokenProxy` resolves its ERC-1967 implementation slot and reaches `60 / 100 · Many signals`."*
+| Mốc Mint/pause dùng trong video | Giá trị đã kiểm chứng |
+| --- | --- |
+| Contract | `0xE2F96cA00564CEE3505Ac3B22D4cF0F66B730eC6` |
+| Snapshot G5 | `61246821` |
+| Điểm và phạm vi | `45 / 100 · Some signals`. 12 mục đã kiểm tra, 7 mục ngoài phạm vi, 0 mục không đọc được. |
+| Tín hiệu có trọng số | `R-MINT +25`, `R-PAUSE +10`, `R-OWNER-EOA +10` |
+| Report hash | `0xf8fb1ca6fae7e6ebb9e79694c30c1e1a89834c0aa6ad89997634d67d04cdc74c` |
+| Giao dịch đã xác minh | `0xe1ba2e32585c0fcedab582c3e71618b81b3261c870744e6e56bfc6f593eb03f2`, block receipt `61247120` |
+| File và kết quả | [JSON gốc](releases/m7-fuji/avaguard-0xe2f96ca00564cee3505ac3b22d4cf0f66b730ec6-61246821.json) · [Receipt](releases/m7-fuji/g5-mintpause-publication-2026-11-18.json) · [Replay và so sánh](releases/m7-fuji/g5-mintpause-validation-2026-11-18.json) |
 
-### Beat 3 — Wallet Network Guard & Authorized Attester Publication (~35s)
-- **Screen**: Export canonical JSON (`Export canonical JSON`), then click **Check wallet** on a non-Fuji chain (`0x1`) -> show **Switch wallet to 43113** button -> click it explicitly -> click **Check wallet** with authorized attester -> click **Publish** and show confirmed tx hash.
-- **Narration**: *"The server never holds private keys or sends transactions. Publication uses the attester's injected browser wallet, refuses wrong networks unless explicitly switched to 43113, and verifies authorized attester status plus exact `RiskRegistry` runtime bytecode before submitting the compact commitment."*
+## Kịch bản quay
 
-### Beat 4 — `/lookup` & Canonical JSON Commitment Check (~25s)
-- **Screen**: Open `/lookup`, paste the published token address, click **Find latest**. Note `"Report body unavailable."`, then import the exported canonical JSON file.
-- **Narration**: *"`RiskRegistry` keeps only a compact commitment and block snapshot on-chain — zero server database required. Importing the canonical JSON recomputes `keccak256` locally and proves the body agrees field-for-field with the on-chain commitment."*
+### 0:00–0:14 — Giới thiệu
 
-### Beat 5 — Independent Original-Block Replay & Current-State Comparison (~20s)
-- **Screen**: Click **Replay original block**, highlight `Original-block replay: replay-matches`, and click **Scan current state**.
-- **Narration**: *"Any verifier can click **Replay original block** to re-run deterministic reads read-only against the exact block recorded on-chain, or compare against current chain state while flagging code changes."*
+**Màn hình.** Trang Scan trên Fuji, giữ tên sản phẩm và nhãn mạng trong khung.
 
-### Beat 6 — Wrap-Up & Boundaries (~10s)
-- **Screen**: Briefly highlight coverage panel and README/runbook link.
-- **Narration**: *"AvaGuard reports reproducible bytecode and snapshot evidence with explicit unknowns — turning raw Avalanche contract state into verifiable signals rather than uncheckable claims."*
+> Khi xem rủi ro của một token, mình muốn biết điểm số dựa vào dữ liệu nào và kiểm chứng lại ra sao. AvaGuard ghi lại các tín hiệu đó tại một block trên Avalanche Fuji.
 
-## 2. Live / Recording Fallback Routes (Fail-Closed Behavior)
+### 0:14–0:46 — Quét và đọc bằng chứng
 
-Use these prepared explanations if a real network condition occurs during a live demo (or highlight them intentionally as safety guarantees):
+**Màn hình.** Dán địa chỉ Mint/pause, bấm **Scan contract**. Khi có kết quả, chỉ block, điểm và **Coverage**, rồi mở `R-MINT` và **Template explanation**. Đọc điểm và phạm vi đang hiện nếu cần nêu con số của lượt quét này.
 
-1. **Historical state pruned (`historical-state-unavailable`)**: Do **not** switch to `latest` or claim the published report is invalid. Point directly to the UI message showing that historical archival state for block `B` is unavailable on this RPC endpoint.
-2. **Missing canonical JSON (`Report body unavailable.`)**: Show that `/lookup` displays only the on-chain summary tuple and keeps replay disabled until a byte-exact matching JSON is imported — never guessing missing evidence.
-3. **RPC failure or rate limit during scan**: AvaGuard renders `inconclusive` with no numeric score, never misreporting a transport failure as a contract revert or low risk.
-4. **AI provider disabled or rejected**: AvaGuard shows the labeled `Template explanation` badge bound only to deterministic evidence IDs.
+> Mình quét mẫu Mint/pause. AvaGuard gắn kết quả với số block và block hash rồi đọc dữ liệu tại block đó. Tín hiệu mint đến từ mẫu nhận diện trong bytecode. Mở chi tiết để xem bằng chứng và đọc phạm vi của phép quét.
 
-## 3. Concise Presentation Outline (5 Slides)
+### 0:46–1:12 — Xuất JSON và chỉ giao dịch đã ký
 
-1. **Problem**: Token checks fail cleanly when mixing blocks, treating isolated selector constants without supported dispatcher evidence as confirmed privileged functions, or trusting unverified summaries without snapshot provenance.
-2. **Architecture**: Deterministic `@avaguard/analyzer` (pinned single-block collector + ERC-1967/beacon/minimal-proxy resolution + ruleset `v1`) -> `RiskRegistry` on Avalanche (`43113`) -> Next.js web app + client wallet signing.
-3. **Showcase Contracts**: Four deployed demo targets (`0`, `45`, `60`, `0` decoy) demonstrating coverage, proxy resolution, and selector-constant false-positive resistance (while distinguishing lack of dispatcher evidence from safety proof).
-4. **Trust Boundaries**: Zero server keys, config fail-closed (`local` vs `fuji`), `registryRuntimeHash` pinning, canonical JSON `keccak256` commitment, and AI constrained to validated evidence IDs.
-5. **Verification & Next Steps**: Automated unit/Foundry/Anvil/Playwright suite + reproducible Foundry deployment & verification runbook (`docs/M7_DELIVERY.md`).
+**Màn hình.** Bấm **Export canonical JSON**. Sau đó chuyển sang đoạn đã ghi hoặc biên nhận Mint/pause G5. Giữ dòng snapshot `61246821` và block giao dịch `61247120` đủ lâu để đọc. Gắn chú thích **Giao dịch G5 đã xác minh**.
 
-## 4. Pre-Recording & Submission Checklist
+> Mình xuất JSON của lượt quét vừa chạy. Để minh họa bước công bố, đây là báo cáo G5 đã được attester ký qua MetaMask. RiskRegistry ghi hash và các trường tóm tắt. Mình sẽ lấy đúng file của báo cáo này để đối chiếu.
 
-- [ ] Hosted HTTPS URL (`AVAGUARD_ENV=fuji`) verified live (`not recorded`).
-- [ ] All 6 contracts (`RiskRegistry`, 4 demo contracts + implementation) deployed on Fuji (`43113`) and verified on Snowscan/Snowtrace (`not deployed`).
-- [ ] Canonical JSON bundles exported from Fuji scans and attached cleanly (`not recorded`).
-- [ ] Video walkthrough (`2–3m`, clear 1080p audio/captions) uploaded and linked (`not recorded`).
-- [ ] Slide deck exported and linked (`not recorded`).
+### 1:12–1:52 — Tra commitment và nạp đúng JSON
+
+**Màn hình.** Vào **Lookup**, dán cùng địa chỉ và bấm **Find latest**. Nếu cần, nhập `0` ở **History index** rồi bấm **Read history entry**. Kiểm tra snapshot `61246821`. Dừng một nhịp ở `Report body unavailable.`, rồi import JSON Mint/pause G5 và chỉ dòng `Commitment matches.`.
+
+> Trong Lookup mình chọn bản đã công bố của Mint/pause. Lúc chưa nạp file, app hiển thị bản tóm tắt từ registry. Mình import JSON gốc của snapshot này. Dòng Commitment matches cho thấy hash và các trường tóm tắt khớp với bản ghi trên Fuji.
+
+### 1:52–2:24 — Replay block gốc và so sánh trạng thái mới
+
+**Màn hình.** Bấm **Replay original block** và giữ kết quả `replay-matches` nếu app trả về như vậy. Sau đó bấm **Scan current state** và chỉ số block mới. Đọc thông báo thực tế trên màn hình.
+
+> Replay chạy lại phép quét ở block gốc để đối chiếu với báo cáo đã công bố. Scan current state lấy một snapshot mới và so sánh các trường mà AvaGuard theo dõi. Hai thao tác dùng hai mốc riêng.
+
+### 2:24–2:48 — Kết quả và đường dẫn kiểm chứng
+
+**Màn hình.** Hiện bảng bốn mẫu ở slide 3 rồi quay về bảng báo cáo trong README. Chỉ dòng Mint/pause để người xem chọn đúng JSON và receipt.
+
+> Bốn mẫu trên Fuji có điểm lần lượt là 0, 45, 60 và 0. Cả bốn báo cáo đã được import và replay khớp. Điểm số tóm tắt tín hiệu trong phạm vi hiển thị. Mở README trên GitHub để lấy JSON và kiểm chứng lại.
+
+## Xử lý nếu RPC phản hồi chậm
+
+- Nếu cần rút thời lượng, giữ **Scan**, **Export**, **Lookup**, **Import** và **Replay**. Rút phần so sánh trạng thái mới hoặc cắt đoạn chờ và đánh dấu chuyển cảnh.
+- Nếu replay báo `historical-state-unavailable`, giữ thông báo đang hiện. Khi dùng ảnh kết quả đã ghi nhận, gắn nhãn **Replay G5 tại block 61246821**.
+- Nếu Scan báo `inconclusive`, thể hiện lý do và dòng `No score available`. Kiểm tra nhãn mạng và thử lại trước khi thu đoạn quét.
+- Nếu quay lại một receipt đang chờ, dùng hash giao dịch đã hiển thị để tra cứu. Báo cáo dùng trong đoạn kiểm chứng vẫn là JSON đúng snapshot G5.
+
+## Nội dung 5 slide tiếng Việt
+
+### Slide 1 — Điểm tín hiệu có thể kiểm chứng
+
+- **Vấn đề** — Người xem cần biết điểm rủi ro của ERC-20 dựa trên dữ liệu nào, ở block nào.
+- **AvaGuard** — Hiện tín hiệu, bằng chứng, độ bao phủ và phương pháp quan sát trong một báo cáo Fuji.
+- **Giá trị** — Một người khác có thể tải file báo cáo và tự đối chiếu.
+
+**Hình gợi ý.** Một ảnh Scan có điểm, snapshot và **Coverage**. Dùng callout ngắn trỏ vào từng vùng.
+
+### Slide 2 — Từ block Fuji đến bằng chứng tái lập
+
+- **Quét** — Cố định chain `43113`, số block và block hash, rồi đọc bytecode và trạng thái.
+- **Công bố** — Ví attester ghi hash và các trường tóm tắt vào `RiskRegistry`. JSON gốc được lưu thành file.
+- **Kiểm chứng** — Người xem tra commitment, import JSON, rồi chạy lại trên block gốc.
+
+**Hình gợi ý.** Vẽ hai nhánh từ **Quét** đến **File JSON** và **Ví → RiskRegistry**. Cả hai nhánh cùng đi vào **Lookup → Replay**.
+
+### Slide 3 — Kết quả của bốn mẫu trên Fuji
+
+| Mẫu | Điểm tín hiệu | Block snapshot | Tín hiệu quan sát |
+| --- | ---: | ---: | --- |
+| Baseline | 0 / 100 | 61245287 | Không có tín hiệu có trọng số |
+| Mint/pause | 45 / 100 | 61246821 | Mint, pause và địa chỉ owner không có runtime code |
+| Proxy | 60 / 100 | 61260485 | ERC-1967, mint và địa chỉ owner không có runtime code |
+| Decoy | 0 / 100 | 61260797 | Không có `R-MINT`. Chỉ có ghi chú phạm vi `R-SOURCE-UNKNOWN`. |
+
+**Dòng chốt trên slide.** Đọc điểm cùng phạm vi và phương pháp quan sát. [Nguồn bốn báo cáo](releases/m7-fuji/README.md#report-and-submission-ledger)
+
+### Slide 4 — Bốn giao dịch và bốn lần replay khớp
+
+- **4/4** biên nhận giao dịch Fuji thành công, đủ bốn JSON gốc.
+- **4/4** commitment khớp qua đọc độc lập tại block `61260827`. Phiên trình duyệt không ví import khớp cả bốn file.
+- **4/4** replay khớp theo bằng chứng trình duyệt. Báo cáo Mint/pause cũng replay khớp trong lần kiểm tra độc lập.
+
+**Hình gợi ý.** Ảnh Lookup Mint/pause với hai dòng `Commitment matches` và `replay-matches`. [Bằng chứng G5](releases/m7-fuji/g5-acceptance-2026-11-18.json)
+
+### Slide 5 — Tự kiểm chứng từ GitHub
+
+- **Mở README** để chọn report Mint/pause và lấy JSON gốc.
+- **Mở Lookup trên Fuji** để đối chiếu snapshot `61246821`, import file và bấm **Replay original block**.
+- **Đọc bằng chứng** để xem receipt đã ký và liên kết source hợp đồng đã xác minh trên Builder Hub.
+
+**Hình gợi ý.** Ba bước **GitHub → JSON → Replay** và ảnh dòng kết quả. Dẫn về [README](../README.md).
+
+## Kiểm tra trước khi nộp
+
+- [x] Dữ liệu G5 trong kịch bản và slide trỏ tới bốn JSON gốc, receipt và kết quả replay đã ghi nhận.
+- [ ] Thu video tiếng Việt, xem lại thời lượng theo file xuất và xác nhận tối đa 3:00.
+- [ ] Dàn 5 slide từ nội dung trên, xuất file và kiểm tra chữ, đường dẫn ở kích thước trình chiếu.
+- [ ] Điền liên kết video và slide vào README, kiểm tra truy cập khi không đăng nhập rồi chuẩn bị nộp. G4 hosting là tùy chọn.
