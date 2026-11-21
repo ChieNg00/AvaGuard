@@ -24,37 +24,43 @@ Timeline dự kiến là **2 phút 48 giây**, chừa 12 giây so với giới h
 
 **Màn hình.** Trang Scan trên Fuji, giữ tên sản phẩm và nhãn mạng trong khung.
 
-> Khi xem rủi ro của một token, mình muốn biết điểm số dựa vào dữ liệu nào và kiểm chứng lại ra sao. AvaGuard ghi lại các tín hiệu đó tại một block trên Avalanche Fuji.
+> Điểm tín hiệu của một token được tính từ dữ liệu nào? AvaGuard quét hợp đồng ERC hai mươi trên mạng thử nghiệm Avalanche Fuji, và cho bạn xem bằng chứng tại đúng block dùng để tính điểm.
 
 ### 0:14–0:46 — Quét và đọc bằng chứng
 
 **Màn hình.** Dán địa chỉ Mint/pause, bấm **Scan contract**. Khi có kết quả, chỉ block, điểm và **Coverage**, rồi mở `R-MINT` và **Template explanation**. Đọc điểm và phạm vi đang hiện nếu cần nêu con số của lượt quét này.
 
-> Mình quét mẫu Mint/pause. AvaGuard gắn kết quả với số block và block hash rồi đọc dữ liệu tại block đó. Tín hiệu mint đến từ mẫu nhận diện trong bytecode. Mở chi tiết để xem bằng chứng và đọc phạm vi của phép quét.
+> Mình thử quét hợp đồng mẫu Mint Pause. AvaGuard chốt dữ liệu tại một block cụ thể. Báo cáo hiện số block, mã băm của block, và điểm tín hiệu. Phần Coverage cho biết những mục nào đã được kiểm tra.
+>
+> Khi mở tín hiệu mint, mình thấy một mẫu trong bytecode, gợi ý rằng hợp đồng có thể có chức năng phát hành thêm token. Phần chi tiết giải thích AvaGuard nhận ra tín hiệu này bằng cách nào.
 
 ### 0:46–1:12 — Xuất JSON và chỉ giao dịch đã ký
 
 **Màn hình.** Bấm **Export canonical JSON**. Sau đó chuyển sang đoạn đã ghi hoặc biên nhận Mint/pause G5. Giữ dòng snapshot `61246821` và block giao dịch `61247120` đủ lâu để đọc. Gắn chú thích **Giao dịch G5 đã xác minh**.
 
-> Mình xuất JSON của lượt quét vừa chạy. Để minh họa bước công bố, đây là báo cáo G5 đã được attester ký qua MetaMask. RiskRegistry ghi hash và các trường tóm tắt. Mình sẽ lấy đúng file của báo cáo này để đối chiếu.
+> Tiếp theo, mình xuất file JSON của lượt quét vừa rồi. Với bước công bố, mình mở biên nhận của một lần công bố trước đó, cho cùng token này. Ví đã được cấp quyền ký giao dịch qua MetaMask. Hợp đồng RiskRegistry ghi mã băm và phần tóm tắt của báo cáo lên Fuji.
 
 ### 1:12–1:52 — Tra commitment và nạp đúng JSON
 
 **Màn hình.** Vào **Lookup**, dán cùng địa chỉ và bấm **Find latest**. Nếu cần, nhập `0` ở **History index** rồi bấm **Read history entry**. Kiểm tra snapshot `61246821`. Dừng một nhịp ở `Report body unavailable.`, rồi import JSON Mint/pause G5 và chỉ dòng `Commitment matches.`.
 
-> Trong Lookup mình chọn bản đã công bố của Mint/pause. Lúc chưa nạp file, app hiển thị bản tóm tắt từ registry. Mình import JSON gốc của snapshot này. Dòng Commitment matches cho thấy hash và các trường tóm tắt khớp với bản ghi trên Fuji.
+> Giờ mình sang trang tra cứu, nhập lại địa chỉ token, và chọn bản ghi của giao dịch vừa xem. Lúc này, AvaGuard mới chỉ hiện phần tóm tắt đọc từ Fuji. Để xem đầy đủ bằng chứng, mình nạp file JSON gốc của lần công bố đó.
+>
+> Thông báo trên màn hình xác nhận mã băm của báo cáo và các trường tóm tắt đều khớp với bản ghi trên Fuji.
 
 ### 1:52–2:24 — Replay block gốc và so sánh trạng thái mới
 
 **Màn hình.** Bấm **Replay original block** và giữ kết quả `replay-matches` nếu app trả về như vậy. Sau đó bấm **Scan current state** và chỉ số block mới. Đọc thông báo thực tế trên màn hình.
 
-> Replay chạy lại phép quét ở block gốc để đối chiếu với báo cáo đã công bố. Scan current state lấy một snapshot mới và so sánh các trường mà AvaGuard theo dõi. Hai thao tác dùng hai mốc riêng.
+> Bây giờ, mình chạy lại phép quét tại block gốc. Kết quả cho thấy báo cáo tạo lại có cùng mã băm với bản đã công bố.
+>
+> Sau đó, mình quét trạng thái hiện tại. AvaGuard lấy dữ liệu ở một block mới, rồi so sánh các tín hiệu và bằng chứng mà ứng dụng đang theo dõi.
 
 ### 2:24–2:48 — Kết quả và đường dẫn kiểm chứng
 
 **Màn hình.** Hiện bảng bốn mẫu ở slide 3 rồi quay về bảng báo cáo trong README. Chỉ dòng Mint/pause để người xem chọn đúng JSON và receipt.
 
-> Bốn mẫu trên Fuji có điểm lần lượt là 0, 45, 60 và 0. Cả bốn báo cáo đã được import và replay khớp. Điểm số tóm tắt tín hiệu trong phạm vi hiển thị. Mở README trên GitHub để lấy JSON và kiểm chứng lại.
+> Điểm tín hiệu của bốn mẫu lần lượt là không, bốn mươi lăm, sáu mươi và không. Các điểm này phản ánh phạm vi AvaGuard đã kiểm tra. Cả bốn báo cáo đều khớp với bản ghi, và cho cùng mã băm khi chạy lại tại block gốc. Bạn có thể mở README của AvaGuard trên GitHub, tải file JSON, và tự kiểm chứng.
 
 ## Xử lý nếu RPC phản hồi chậm
 
