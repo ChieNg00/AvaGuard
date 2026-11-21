@@ -20,7 +20,6 @@
 | JSON | Giây sơn |
 | MetaMask | Mê ta mát |
 | RiskRegistry | Rít rê gít tri |
-| Commitment matches | Cơ mít mần mát chịt |
 | README | Rít mi |
 | GitHub | Gít hấp |
 
@@ -28,7 +27,7 @@
 
 *Ráp tiếng khi tên AvaGuard và nhãn Avalanche Fuji cùng hiện trên màn hình.*
 
-> Điểm rủi ro của một token được tính từ dữ liệu nào? AvaGuard quét hợp đồng ERC hai mươi trên mạng thử nghiệm Avalanche Fuji, và cho bạn xem bằng chứng tại đúng block dùng để tính điểm.
+> Điểm tín hiệu của một token được tính từ dữ liệu nào? AvaGuard quét hợp đồng ERC hai mươi trên mạng thử nghiệm Avalanche Fuji, và cho bạn xem bằng chứng tại đúng block dùng để tính điểm.
 
 ## 0:14–0:46 — Quét và đọc bằng chứng
 
@@ -50,7 +49,7 @@
 
 > Giờ mình sang trang tra cứu, nhập lại địa chỉ token, và chọn bản ghi của giao dịch vừa xem. Lúc này, AvaGuard mới chỉ hiện phần tóm tắt đọc từ Fuji. Để xem đầy đủ bằng chứng, mình nạp file JSON gốc của lần công bố đó.
 >
-> Dòng Commitment matches nghĩa là mã băm tính lại từ file, cùng các trường tóm tắt, đều khớp với bản ghi trên Fuji.
+> Thông báo trên màn hình xác nhận mã băm của báo cáo và các trường tóm tắt đều khớp với bản ghi trên Fuji.
 
 ## 1:52–2:24 — Chạy lại ở block gốc
 
@@ -64,7 +63,7 @@
 
 *Hiện bảng theo thứ tự Baseline, Mint/pause, Proxy, Decoy. Khi nhắc GitHub, chuyển sang bảng báo cáo trong README và giữ dòng Mint/pause để người xem thấy link JSON và biên nhận.*
 
-> Bốn mẫu trên Fuji có điểm lần lượt là không, bốn mươi lăm, sáu mươi, và không. Cả bốn báo cáo đều khớp với bản ghi, và cho cùng mã băm khi chạy lại tại block gốc. Bạn có thể mở README của AvaGuard trên GitHub, tải file JSON, và tự kiểm chứng.
+> Điểm tín hiệu của bốn mẫu lần lượt là không, bốn mươi lăm, sáu mươi và không. Các điểm này phản ánh phạm vi AvaGuard đã kiểm tra. Cả bốn báo cáo đều khớp với bản ghi, và cho cùng mã băm khi chạy lại tại block gốc. Bạn có thể mở README của AvaGuard trên GitHub, tải file JSON, và tự kiểm chứng.
 
 ## Lời đọc thay thế khi dựng
 

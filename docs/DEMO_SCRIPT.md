@@ -24,7 +24,7 @@ Timeline dự kiến là **2 phút 48 giây**, chừa 12 giây so với giới h
 
 **Màn hình.** Trang Scan trên Fuji, giữ tên sản phẩm và nhãn mạng trong khung.
 
-> Điểm rủi ro của một token được tính từ dữ liệu nào? AvaGuard quét hợp đồng ERC hai mươi trên mạng thử nghiệm Avalanche Fuji, và cho bạn xem bằng chứng tại đúng block dùng để tính điểm.
+> Điểm tín hiệu của một token được tính từ dữ liệu nào? AvaGuard quét hợp đồng ERC hai mươi trên mạng thử nghiệm Avalanche Fuji, và cho bạn xem bằng chứng tại đúng block dùng để tính điểm.
 
 ### 0:14–0:46 — Quét và đọc bằng chứng
 
@@ -46,7 +46,7 @@ Timeline dự kiến là **2 phút 48 giây**, chừa 12 giây so với giới h
 
 > Giờ mình sang trang tra cứu, nhập lại địa chỉ token, và chọn bản ghi của giao dịch vừa xem. Lúc này, AvaGuard mới chỉ hiện phần tóm tắt đọc từ Fuji. Để xem đầy đủ bằng chứng, mình nạp file JSON gốc của lần công bố đó.
 >
-> Dòng Commitment matches nghĩa là mã băm tính lại từ file, cùng các trường tóm tắt, đều khớp với bản ghi trên Fuji.
+> Thông báo trên màn hình xác nhận mã băm của báo cáo và các trường tóm tắt đều khớp với bản ghi trên Fuji.
 
 ### 1:52–2:24 — Replay block gốc và so sánh trạng thái mới
 
@@ -60,7 +60,7 @@ Timeline dự kiến là **2 phút 48 giây**, chừa 12 giây so với giới h
 
 **Màn hình.** Hiện bảng bốn mẫu ở slide 3 rồi quay về bảng báo cáo trong README. Chỉ dòng Mint/pause để người xem chọn đúng JSON và receipt.
 
-> Bốn mẫu trên Fuji có điểm lần lượt là không, bốn mươi lăm, sáu mươi, và không. Cả bốn báo cáo đều khớp với bản ghi, và cho cùng mã băm khi chạy lại tại block gốc. Bạn có thể mở README của AvaGuard trên GitHub, tải file JSON, và tự kiểm chứng.
+> Điểm tín hiệu của bốn mẫu lần lượt là không, bốn mươi lăm, sáu mươi và không. Các điểm này phản ánh phạm vi AvaGuard đã kiểm tra. Cả bốn báo cáo đều khớp với bản ghi, và cho cùng mã băm khi chạy lại tại block gốc. Bạn có thể mở README của AvaGuard trên GitHub, tải file JSON, và tự kiểm chứng.
 
 ## Xử lý nếu RPC phản hồi chậm
 
