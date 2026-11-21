@@ -2,7 +2,7 @@
 
 AvaGuard scans ERC-20 contracts on Avalanche Fuji and shows the evidence behind each risk signal. Each scan reads bytecode and state at one block. An authorized attester can record the report hash and summary in `RiskRegistry`. Anyone with the original JSON can look up that commitment and replay the scan at the original block.
 
-Built by Team1 for Vietnam UniHack 2026.
+Built by PowerRanger (Team1) for Vietnam UniHack 2026.
 
 ## Start from a fresh clone
 
@@ -34,7 +34,7 @@ Four reports were published with a real MetaMask attester on Fuji C-Chain (chain
 | DemoTokenProxy | 60 / 100 · Many signals | `61260485` | [JSON](docs/releases/m7-fuji/avaguard-0xffad3eb4fbb259b1e76f84a66d6c0d005864d61c-61260485.json) | [Receipt](docs/releases/m7-fuji/g5-proxy-publication-2026-11-18.json) |
 | DecoyConstantToken | 0 / 100 · Few signals | `61260797` | [JSON](docs/releases/m7-fuji/avaguard-0xfa73c98ece0639cb86da211e98e742289de5fcd4-61260797.json) | [Receipt](docs/releases/m7-fuji/g5-decoy-publication-2026-11-18.json) |
 
-The deployment includes the registry, four showcase targets and the proxy implementation. Builder Hub source verification returned `Exact match` for all six. Find their addresses, source pages and deployment receipts in the [Fuji release evidence](docs/releases/m7-fuji/README.md). The [Vietnamese recording script and five-slide outline](docs/DEMO_SCRIPT.md) use the same reports. The recorded video and exported slide deck are pending.
+The deployment includes [`RiskRegistry`](https://build.avax.network/explorer/fuji/c-chain/address/0x003D1f3C26FfAC734297979B1FC82914217C5392) (`0x003D1f3C26FfAC734297979B1FC82914217C5392`), four showcase targets and the proxy implementation. Avalanche Builder Hub source verification returned `Exact match` for all six contracts. Find all six addresses, verified source pages and deployment receipts in the [Fuji release evidence](docs/releases/m7-fuji/README.md). The [Vietnamese recording script and five-slide outline](docs/DEMO_SCRIPT.md) are based on these same reports.
 
 ## Run the Fuji demo locally
 
@@ -110,7 +110,7 @@ flowchart LR
   JSON --> Lookup
 ```
 
-The scanner records chain ID, block number, block hash, findings, coverage and observation methods. A signal score summarizes the weighted findings from those checks. The Mint/pause example has mint and pause dispatcher matches and an owner address with no runtime code at the snapshot. The Decoy example produced no weighted finding. `R-SOURCE-UNKNOWN` is a scope note about analyzer coverage. Builder Hub source verification is tracked in the deployment evidence.
+The scanner records chain ID, block number, block hash, findings, coverage and observation methods. A signal score summarizes weighted risk signals from in-scope checks (`Few signals` 0–24, `Some signals` 25–59, `Many signals` 60–100) and is never a safety certification. A `RiskRegistry` commitment proves an authorized attester published that hash and summary; it does not prove the analysis is correct. The Mint/pause example has mint and pause dispatcher matches and an owner address with no runtime code at the snapshot. The Decoy example produced no weighted finding. `R-SOURCE-UNKNOWN` is a scope note about analyzer coverage; Builder Hub source verification is tracked separately in the deployment evidence.
 
 ## Contributor references
 
