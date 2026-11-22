@@ -1173,6 +1173,15 @@ export interface ExplainProvider {
   ): Promise<unknown>;
 }
 
+export interface ExplainSharedCache {
+  get(key: string): Promise<unknown | null | undefined>;
+  set(key: string, rawPayload: unknown): Promise<void>;
+}
+
+export type ExplainBeforeProviderCallResult =
+  | { allowed: true }
+  | { allowed: false; fallbackReason?: string };
+
 export type ExplainServiceOptions = {
   provider?: ExplainProvider | null;
   enabled?: boolean;
@@ -1181,6 +1190,15 @@ export type ExplainServiceOptions = {
   deadlineMs?: number;
   maxAttempts?: number;
   maxCacheEntries?: number;
+  sharedCache?: ExplainSharedCache | null;
+  beforeProviderCall?: (context: {
+    cacheKey: string;
+    input: ExplainInput;
+    promptVersion: string;
+    language?: ExplainLanguage;
+  }) =>
+    | Promise<ExplainBeforeProviderCallResult>
+    | ExplainBeforeProviderCallResult;
 };
 
 function fallbackReasonFor(error: unknown): string {
@@ -1297,6 +1315,7 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
       enabled?: boolean;
       promptVersion?: string;
       language?: ExplainLanguage;
+      beforeProviderCall?: ExplainServiceOptions["beforeProviderCall"];
     },
   ): Promise<{ explanation: ReportExplanation; cacheHit: boolean }> {
     const enabled = override?.enabled ?? options.enabled ?? false;
@@ -1337,6 +1356,52 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
       return { explanation: cached, cacheHit: true };
     }
 
+    if (options.sharedCache) {
+      let sharedRaw: unknown;
+      try {
+        sharedRaw = await options.sharedCache.get(key);
+      } catch {
+        sharedRaw = null;
+      }
+      if (sharedRaw !== null && sharedRaw !== undefined) {
+        try {
+          const validated = validateAiResponse(sharedRaw, input, {
+            model: provider.model,
+            promptVersion: activePromptVersion,
+            cached: true,
+            ...(activeLanguage ? { language: activeLanguage } : {}),
+          });
+          setCached(key, validated);
+          return {
+            explanation: { ...validated, cached: true },
+            cacheHit: true,
+          };
+        } catch {
+          // Ignore corrupted or untrusted shared-cache entries and fall through.
+        }
+      }
+    }
+
+    const guard = override?.beforeProviderCall ?? options.beforeProviderCall;
+    if (guard) {
+      const decision = await guard({
+        cacheKey: key,
+        input,
+        promptVersion: activePromptVersion,
+        ...(activeLanguage ? { language: activeLanguage } : {}),
+      });
+      if (!decision.allowed) {
+        return {
+          explanation: buildTemplateExplanationFromInput(
+            input,
+            decision.fallbackReason ??
+              "AI rate limit reached; showing template.",
+          ),
+          cacheHit: false,
+        };
+      }
+    }
+
     try {
       const raw = await callProviderWithBounds(
         provider,
@@ -1351,6 +1416,13 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
         ...(activeLanguage ? { language: activeLanguage } : {}),
       });
       setCached(key, validated);
+      if (options.sharedCache) {
+        try {
+          await options.sharedCache.set(key, raw);
+        } catch {
+          // Ignore shared-cache write failures.
+        }
+      }
       return { explanation: validated, cacheHit: false };
     } catch (error) {
       return {
@@ -1369,6 +1441,7 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
       enabled?: boolean;
       promptVersion?: string;
       language?: ExplainLanguage;
+      beforeProviderCall?: ExplainServiceOptions["beforeProviderCall"];
     },
   ): Promise<{ explanation: ReportExplanation; cacheHit: boolean }> {
     const { input } = buildExplainInput(rawBody);

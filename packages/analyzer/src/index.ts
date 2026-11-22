@@ -50,3 +50,7 @@ export * from "./rules";
 export * from "./report-body";
 export * from "./replay";
 export * from "./explain";
+export type {
+  ExplainBeforeProviderCallResult,
+  ExplainSharedCache,
+} from "./explain";
