@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { hashSchema } from "@avaguard/analyzer";
+import {
+  explainLanguageSchema,
+  hashSchema,
+  type ExplainLanguage,
+} from "@avaguard/analyzer";
 import { BoundedReadError, readBoundedJson } from "../../../lib/bounded-read";
 import {
   getExplainRuntime,
@@ -52,6 +56,20 @@ export async function POST(request: Request) {
 
   const record = parsedJson as Record<string, unknown>;
   const keys = Object.keys(record);
+  const allowedKeys = tokenMode
+    ? new Set(["reportHash", "explainToken", "language"])
+    : new Set(["reportHash", "language"]);
+
+  if (
+    !Object.prototype.hasOwnProperty.call(record, "reportHash") ||
+    keys.some((key) => !allowedKeys.has(key))
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "Invalid explain request payload." },
+      { status: 400 },
+    );
+  }
+
   const rawHash = record.reportHash;
   const parsedHash =
     typeof rawHash === "string"
@@ -64,21 +82,40 @@ export async function POST(request: Request) {
     );
   }
 
+  let parsedLanguage: ExplainLanguage | undefined;
+  if (Object.prototype.hasOwnProperty.call(record, "language")) {
+    const langResult = explainLanguageSchema.safeParse(record.language);
+    if (!langResult.success) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid explain request payload." },
+        { status: 400 },
+      );
+    }
+    parsedLanguage = langResult.data;
+  }
+
+  const hasToken = Object.prototype.hasOwnProperty.call(record, "explainToken");
   let result:
     | { ok: true; status: 200; explanation: unknown }
     | { ok: false; status: 400 | 404; error: string };
 
-  if (keys.length === 1) {
-    result = await runtime.explainByHash(parsedHash.data);
+  if (!hasToken) {
+    result = parsedLanguage
+      ? await runtime.explainByHash(parsedHash.data, parsedLanguage)
+      : await runtime.explainByHash(parsedHash.data);
   } else if (
     tokenMode &&
-    keys.length === 2 &&
-    Object.prototype.hasOwnProperty.call(record, "explainToken") &&
     typeof record.explainToken === "string" &&
     record.explainToken.length > 0 &&
     typeof runtime.explainByToken === "function"
   ) {
-    result = await runtime.explainByToken(parsedHash.data, record.explainToken);
+    result = parsedLanguage
+      ? await runtime.explainByToken(
+          parsedHash.data,
+          record.explainToken,
+          parsedLanguage,
+        )
+      : await runtime.explainByToken(parsedHash.data, record.explainToken);
   } else {
     return NextResponse.json(
       { ok: false, error: "Invalid explain request payload." },

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import {
   canonicalReportJson,
   EXPLAIN_PROMPT_VERSION,
+  EXPLAIN_PROMPT_VERSION_V3,
+  type ExplainLanguage,
   type ReportBody,
   type ReportExplanation,
 } from "@avaguard/analyzer";
@@ -36,9 +38,15 @@ export function Coverage({ coverage }: Pick<ReportBody, "coverage">) {
 export function ExplanationPanel({
   explanation,
   pending = false,
+  language,
+  onLanguageChange,
+  onRetry,
 }: {
   explanation: ReportExplanation;
   pending?: boolean;
+  language?: ExplainLanguage;
+  onLanguageChange?: (language: ExplainLanguage) => void;
+  onRetry?: () => void;
 }) {
   const provenanceLabel =
     explanation.provenance === "ai-assisted"
@@ -50,22 +58,71 @@ export function ExplanationPanel({
       <div className="explain-header">
         <h3>Explanation</h3>
         <span className="provenance-badge">{provenanceLabel}</span>
+        {onLanguageChange && (
+          <div
+            className="explain-lang"
+            role="group"
+            aria-label="AI explanation language"
+          >
+            <button
+              type="button"
+              className={language === "en" ? "active" : undefined}
+              aria-pressed={language === "en"}
+              disabled={pending}
+              onClick={() => onLanguageChange("en")}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              className={language === "vi" ? "active" : undefined}
+              aria-pressed={language === "vi"}
+              disabled={pending}
+              onClick={() => onLanguageChange("vi")}
+            >
+              Tiếng Việt
+            </button>
+          </div>
+        )}
       </div>
       {explanation.provenance === "ai-assisted" && explanation.model && (
         <p className="explain-meta">
           Model: <code>{explanation.model}</code> · Prompt v
           {explanation.promptVersion ?? EXPLAIN_PROMPT_VERSION}
+          {explanation.language
+            ? ` · ${explanation.language === "vi" ? "Tiếng Việt" : "English"}`
+            : ""}
           {explanation.cached ? " · cached" : ""}
         </p>
       )}
       {pending && (
         <p role="status">
-          Requesting AI-assisted explanation… Showing template explanation
-          meanwhile.
+          {language
+            ? `Requesting ${language === "vi" ? "Tiếng Việt" : "English"} AI explanation…`
+            : "Requesting AI-assisted explanation… Showing template explanation meanwhile."}
         </p>
       )}
       {explanation.fallbackReason && (
-        <p role="status">{explanation.fallbackReason}</p>
+        <div className="explain-fallback" role="status">
+          <span>{explanation.fallbackReason}</span>
+          {!pending && onRetry && (
+            <button
+              type="button"
+              className="explain-retry"
+              onClick={onRetry}
+            >
+              Retry AI
+            </button>
+          )}
+        </div>
+      )}
+      {explanation.aiSummary && (
+        <div className="explain-ai-summary">
+          <p className="explain-ai-label">
+            AI summary (verify against deterministic evidence below)
+          </p>
+          <p>{explanation.aiSummary}</p>
+        </div>
       )}
       <p>{explanation.overview}</p>
       <p>{explanation.coverageSummary}</p>
@@ -76,6 +133,11 @@ export function ExplanationPanel({
               <h4>
                 {f.findingId} · {f.severity} · +{f.weight}
               </h4>
+              {f.aiNote && (
+                <p className="explain-ai-note">
+                  <strong>AI note:</strong> {f.aiNote}
+                </p>
+              )}
               <p>{f.summary}</p>
               <p>{f.confidenceNote}</p>
               <p>
@@ -111,6 +173,7 @@ export function Report({
   reportHash,
   initialExplanation,
   aiEnabled,
+  aiPromptVersion = EXPLAIN_PROMPT_VERSION,
   explainToken = null,
   publicationConfig,
 }: {
@@ -119,12 +182,28 @@ export function Report({
   reportHash: string;
   initialExplanation: ReportExplanation;
   aiEnabled: boolean;
+  aiPromptVersion?: string;
   explainToken?: string | null;
   publicationConfig: PublicPublicationConfig;
 }) {
   const [explanation, setExplanation] =
     useState<ReportExplanation>(initialExplanation);
   const [aiPending, setAiPending] = useState(aiEnabled);
+  const [aiLanguage, setAiLanguage] = useState<ExplainLanguage>("en");
+  const [retryNonce, setRetryNonce] = useState(0);
+  const supportsLanguageSwitch =
+    aiEnabled && aiPromptVersion === EXPLAIN_PROMPT_VERSION_V3;
+
+  function handleLanguageChange(nextLanguage: ExplainLanguage) {
+    if (nextLanguage === aiLanguage) return;
+    setAiPending(true);
+    setAiLanguage(nextLanguage);
+  }
+
+  function handleRetry() {
+    setAiPending(true);
+    setRetryNonce((n) => n + 1);
+  }
 
   useEffect(() => {
     if (!aiEnabled) return;
@@ -132,9 +211,13 @@ export function Report({
     let cancelled = false;
     const controller = new AbortController();
     const expectedHash = reportHash;
-    const payload = explainToken
-      ? { reportHash: expectedHash, explainToken }
-      : { reportHash: expectedHash };
+    const payload = {
+      reportHash: expectedHash,
+      ...(explainToken ? { explainToken } : {}),
+      ...(aiPromptVersion === EXPLAIN_PROMPT_VERSION_V3
+        ? { language: aiLanguage }
+        : {}),
+    };
 
     void (async () => {
       try {
@@ -185,7 +268,15 @@ export function Report({
       cancelled = true;
       controller.abort();
     };
-  }, [aiEnabled, explainToken, initialExplanation, reportHash]);
+  }, [
+    aiEnabled,
+    aiLanguage,
+    aiPromptVersion,
+    explainToken,
+    initialExplanation,
+    reportHash,
+    retryNonce,
+  ]);
 
   function download() {
     const url = URL.createObjectURL(
@@ -238,7 +329,15 @@ export function Report({
           ))}
         </details>
       ))}
-      <ExplanationPanel explanation={explanation} pending={aiPending} />
+      <ExplanationPanel
+        explanation={explanation}
+        pending={aiPending}
+        language={supportsLanguageSwitch ? aiLanguage : undefined}
+        onLanguageChange={
+          supportsLanguageSwitch ? handleLanguageChange : undefined
+        }
+        onRetry={aiEnabled ? handleRetry : undefined}
+      />
       <p>
         <button onClick={download}>Export canonical JSON</button>
       </p>

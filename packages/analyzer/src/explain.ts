@@ -20,6 +20,9 @@ type Confidence = NonNullable<ReportBody["findings"][number]["confidence"]>;
 type Coverage = ReportBody["coverage"];
 
 export const EXPLAIN_PROMPT_VERSION = "2";
+export const EXPLAIN_PROMPT_VERSION_V3 = "3";
+export const explainLanguageSchema = z.enum(["en", "vi"]);
+export type ExplainLanguage = z.infer<typeof explainLanguageSchema>;
 export const MAX_EXPLAIN_INPUT_BYTES = 16_384;
 export const MAX_EXPLAIN_OUTPUT_BYTES = 8_192;
 export const DEFAULT_EXPLAIN_REQUEST_TIMEOUT_MS = 2_500;
@@ -215,6 +218,7 @@ export type ExplainedFinding = {
   confidenceNote: string;
   summary: string;
   suggestedChecks: string[];
+  aiNote?: string;
 };
 
 export type ReportExplanation = {
@@ -229,6 +233,8 @@ export type ReportExplanation = {
   fallbackReason?: string;
   model?: string;
   promptVersion?: string;
+  language?: ExplainLanguage;
+  aiSummary?: string;
   cached?: boolean;
 };
 
@@ -411,9 +417,14 @@ export function explainCacheKey(
   input: ExplainInput,
   promptVersion: string,
   model: string,
+  language?: ExplainLanguage,
 ): string {
   const digest = keccak256(stringToHex(canonicalExplainInputJson(input)));
-  return `${digest}:${encodeURIComponent(promptVersion)}:${encodeURIComponent(model)}`;
+  const base = `${digest}:${encodeURIComponent(promptVersion)}:${encodeURIComponent(model)}`;
+  if (promptVersion === EXPLAIN_PROMPT_VERSION_V3) {
+    return `${base}:${encodeURIComponent(language ?? "en")}`;
+  }
+  return base;
 }
 
 function projectReadFact(e: ReadEvidence): z.infer<typeof observationFactSchema> {
@@ -812,6 +823,125 @@ const aiOutputSchema = z.strictObject({
   items: z.array(aiItemSchema).min(1).max(64),
 });
 
+const aiItemV3Schema = z.strictObject({
+  findingId: z.string().min(1).max(64),
+  citedEvidenceIds: z.array(z.string().min(1).max(100)).min(1).max(32),
+  suggestedCheckIds: z.array(z.string().min(1).max(64)).max(3).optional(),
+  narrative: z.string().trim().min(10).max(360),
+});
+
+const aiOutputV3Schema = z.strictObject({
+  narrativeOverview: z.string().trim().min(20).max(650),
+  items: z.array(aiItemV3Schema).min(1).max(64),
+});
+
+type BaseAiSelectionItem = z.infer<typeof aiItemSchema>;
+
+const DISALLOWED_MARKUP_PATTERN =
+  /[<>`]|https?:\/\/|javascript:|data:|\]\(/i;
+
+const ENGLISH_UNSUPPORTED_CLAIM_PATTERNS: readonly RegExp[] = [
+  /\b(?:is|are|appears?|looks?|seems?|deemed|considered|certified|verified|confirmed|proven|guaranteed)\s+(?:to\s+be\s+)?(?:completely\s+|fully\s+|100%\s+)?(?:safe|secure|harmless|legitimate|trustworthy|audited|scam-free|rug-free|malicious|a\s+scam|a\s+rug\s*pull|fraudulent)\b/gi,
+  /\b(?:guaranteed\s+(?:safe|secure)|zero\s+risk|risk-free|100%\s+(?:safe|secure)|fully\s+audited|officially\s+audited|passed\s+(?:an?\s+)?audit|source\s+verification\s+passed)\b/gi,
+  /\b(?:proves?|confirms?|guarantees?)\s+(?:that\s+)?(?:the\s+)?(?:owner|admin|deployer|attacker|anyone)\s+(?:can|has|controls?|will)\b/gi,
+  /\b(?:unlimited\s+(?:mint|supply)\s+(?:cap|authority|power)|can\s+steal\s+funds|will\s+rug)\b/gi,
+];
+
+function normalizeVietnameseForGuardrail(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase();
+}
+
+const VIETNAMESE_NEGATABLE_CLAIM_PATTERN =
+  /(?:hoan\s+toan\s+an\s+toan|an\s+toan\s+tuyet\s+doi|dam\s+bao\s+an\s+toan|chac\s+chan\s+an\s+toan|da\s+duoc\s+kiem\s+toan|da\s+kiem\s+toan\s+day\s+du|chung\s+nhan\s+an\s+toan|chac\s+chan\s+lua\s+dao|chac\s+chan\s+scam|chung\s+minh\s+(?:chu\s+so\s+huu|owner|admin)\s+co\s+quyen)/g;
+
+const VIETNAMESE_ABSOLUTE_CLAIM_PATTERN =
+  /(?:khong\s+co\s+rui\s+ro|khong\s+rui\s+ro)/g;
+
+const VIETNAMESE_NEGATION_PREFIX =
+  /(?:khong(?:\s+phai(?:\s+la)?)?|chua(?:\s+phai(?:\s+la)?)?|khong\s+he|chang)\s+$/;
+
+const SCORE_CITATION_PATTERN = /(\d{1,3})\s*\/\s*100\b/g;
+
+function hasDisallowedControlChars(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (
+      code <= 8 ||
+      code === 11 ||
+      code === 12 ||
+      (code >= 14 && code <= 31) ||
+      code === 127
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function validateNarrativeText(text: string, expectedScore: number): void {
+  if (
+    hasDisallowedControlChars(text) ||
+    DISALLOWED_MARKUP_PATTERN.test(text)
+  ) {
+    throw new ExplainValidationError(
+      "unsupported-claim",
+      "AI narrative contained disallowed markup or links.",
+    );
+  }
+
+  for (const pattern of ENGLISH_UNSUPPORTED_CLAIM_PATTERNS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(text)) {
+      throw new ExplainValidationError(
+        "unsupported-claim",
+        "AI narrative contained an unsupported safety, audit, or privilege claim.",
+      );
+    }
+  }
+
+  const normalizedVi = normalizeVietnameseForGuardrail(text);
+  VIETNAMESE_ABSOLUTE_CLAIM_PATTERN.lastIndex = 0;
+  if (VIETNAMESE_ABSOLUTE_CLAIM_PATTERN.test(normalizedVi)) {
+    throw new ExplainValidationError(
+      "unsupported-claim",
+      "AI narrative contained an unsupported safety, audit, or privilege claim.",
+    );
+  }
+
+  VIETNAMESE_NEGATABLE_CLAIM_PATTERN.lastIndex = 0;
+  let viMatch: RegExpExecArray | null;
+  while (
+    (viMatch = VIETNAMESE_NEGATABLE_CLAIM_PATTERN.exec(normalizedVi)) !== null
+  ) {
+    const prefix = normalizedVi.slice(
+      Math.max(0, viMatch.index - 28),
+      viMatch.index,
+    );
+    if (!VIETNAMESE_NEGATION_PREFIX.test(prefix)) {
+      throw new ExplainValidationError(
+        "unsupported-claim",
+        "AI narrative contained an unsupported safety, audit, or privilege claim.",
+      );
+    }
+  }
+
+  SCORE_CITATION_PATTERN.lastIndex = 0;
+  let scoreMatch: RegExpExecArray | null;
+  while ((scoreMatch = SCORE_CITATION_PATTERN.exec(text)) !== null) {
+    const cited = Number(scoreMatch[1]);
+    if (cited !== expectedScore) {
+      throw new ExplainValidationError(
+        "unsupported-claim",
+        "AI narrative cited a mismatched signal score.",
+      );
+    }
+  }
+}
+
 export type ExplainValidationCode =
   | "invalid-json"
   | "oversized"
@@ -827,68 +957,20 @@ export class ExplainValidationError extends Error {
   }
 }
 
-export function validateAiResponse(
-  raw: unknown,
+function validateSelectionItems<T extends BaseAiSelectionItem>(
+  items: readonly T[],
   input: ExplainInput,
-  meta: { model: string; promptVersion: string; cached?: boolean },
-): ReportExplanation {
-  let payload: unknown;
-  if (typeof raw === "string") {
-    if (encoder.encode(raw).byteLength > MAX_EXPLAIN_OUTPUT_BYTES) {
-      throw new ExplainValidationError(
-        "oversized",
-        "AI explanation response exceeded the byte limit.",
-      );
-    }
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      throw new ExplainValidationError(
-        "invalid-json",
-        "AI explanation response was not valid JSON.",
-      );
-    }
-  } else {
-    let serialized: string;
-    try {
-      serialized = JSON.stringify(raw);
-    } catch {
-      throw new ExplainValidationError(
-        "invalid-json",
-        "AI explanation response could not be serialized.",
-      );
-    }
-    if (
-      !serialized ||
-      encoder.encode(serialized).byteLength > MAX_EXPLAIN_OUTPUT_BYTES
-    ) {
-      throw new ExplainValidationError(
-        "oversized",
-        "AI explanation response exceeded the byte limit.",
-      );
-    }
-    payload = raw;
-  }
-
-  const parsedResult = aiOutputSchema.safeParse(payload);
-  if (!parsedResult.success) {
-    throw new ExplainValidationError(
-      "schema-invalid",
-      "AI explanation response violated the strict selection schema.",
-    );
-  }
-  const parsed = parsedResult.data;
-
+): Map<string, ExplainInput["findings"][number]> {
   const expectedById = new Map(input.findings.map((f) => [f.id, f]));
-  const itemsById = new Map<string, (typeof parsed.items)[number]>();
-  for (const item of parsed.items) {
+  const seen = new Set<string>();
+  for (const item of items) {
     if (!expectedById.has(item.findingId)) {
       throw new ExplainValidationError(
         "evidence-invalid",
         `Invented finding ID in AI response: ${item.findingId}`,
       );
     }
-    if (itemsById.has(item.findingId)) {
+    if (seen.has(item.findingId)) {
       throw new ExplainValidationError(
         "evidence-invalid",
         `Duplicate finding ID in AI response: ${item.findingId}`,
@@ -929,24 +1011,104 @@ export function validateAiResponse(
         }
       }
     }
-    itemsById.set(item.findingId, item);
+    seen.add(item.findingId);
   }
 
-  if (itemsById.size !== expectedById.size) {
+  if (seen.size !== expectedById.size) {
     throw new ExplainValidationError(
       "schema-invalid",
       "AI response omitted one or more findings.",
     );
   }
+  return expectedById;
+}
 
+export function validateAiResponse(
+  raw: unknown,
+  input: ExplainInput,
+  meta: {
+    model: string;
+    promptVersion: string;
+    cached?: boolean;
+    language?: ExplainLanguage;
+  },
+): ReportExplanation {
+  let payload: unknown;
+  if (typeof raw === "string") {
+    if (encoder.encode(raw).byteLength > MAX_EXPLAIN_OUTPUT_BYTES) {
+      throw new ExplainValidationError(
+        "oversized",
+        "AI explanation response exceeded the byte limit.",
+      );
+    }
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      throw new ExplainValidationError(
+        "invalid-json",
+        "AI explanation response was not valid JSON.",
+      );
+    }
+  } else {
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(raw);
+    } catch {
+      throw new ExplainValidationError(
+        "invalid-json",
+        "AI explanation response could not be serialized.",
+      );
+    }
+    if (
+      !serialized ||
+      encoder.encode(serialized).byteLength > MAX_EXPLAIN_OUTPUT_BYTES
+    ) {
+      throw new ExplainValidationError(
+        "oversized",
+        "AI explanation response exceeded the byte limit.",
+      );
+    }
+    payload = raw;
+  }
+
+  const isV3 = meta.promptVersion === EXPLAIN_PROMPT_VERSION_V3;
+  let validatedItems: readonly (BaseAiSelectionItem & { narrative?: string })[];
+  let narrativeOverview: string | undefined;
+
+  if (isV3) {
+    const parsedV3 = aiOutputV3Schema.safeParse(payload);
+    if (!parsedV3.success) {
+      throw new ExplainValidationError(
+        "schema-invalid",
+        "AI explanation response violated the strict v3 schema.",
+      );
+    }
+    validateNarrativeText(parsedV3.data.narrativeOverview, input.signalScore);
+    for (const item of parsedV3.data.items) {
+      validateNarrativeText(item.narrative, input.signalScore);
+    }
+    narrativeOverview = parsedV3.data.narrativeOverview;
+    validatedItems = parsedV3.data.items;
+  } else {
+    const parsedResult = aiOutputSchema.safeParse(payload);
+    if (!parsedResult.success) {
+      throw new ExplainValidationError(
+        "schema-invalid",
+        "AI explanation response violated the strict selection schema.",
+      );
+    }
+    validatedItems = parsedResult.data.items;
+  }
+
+  const expectedById = validateSelectionItems(validatedItems, input);
   const template = buildTemplateExplanationFromInput(input);
   const templateFindingById = new Map(
     template.findings.map((f) => [f.findingId, f]),
   );
 
-  // Preserve the provider's validated finding ordering and allowlisted check selection
-  // while rendering every claim and required evidence list deterministically.
-  const findings: ExplainedFinding[] = parsed.items.map((item) => {
+  // Preserve the provider's validated finding ordering, allowlisted check selection,
+  // and bounded v3 narrative notes while keeping every deterministic claim intact.
+  const findings: ExplainedFinding[] = validatedItems.map((item) => {
     const expected = expectedById.get(item.findingId)!;
     const baseFinding = templateFindingById.get(expected.id)!;
     const checkMap = new Map(
@@ -959,6 +1121,7 @@ export function validateAiResponse(
       ...baseFinding,
       evidenceIds: [...expected.evidenceIds],
       suggestedChecks,
+      ...(item.narrative ? { aiNote: item.narrative } : {}),
     };
   });
 
@@ -973,6 +1136,12 @@ export function validateAiResponse(
     coverageSummary: template.coverageSummary,
     model: meta.model,
     promptVersion: meta.promptVersion,
+    ...(isV3
+      ? {
+          language: meta.language ?? "en",
+          aiSummary: narrativeOverview,
+        }
+      : {}),
     cached: Boolean(meta.cached),
   };
 }
@@ -996,7 +1165,11 @@ export interface ExplainProvider {
   readonly model: string;
   explain(
     input: ExplainInput,
-    options: { promptVersion: string; signal: AbortSignal },
+    options: {
+      promptVersion: string;
+      signal: AbortSignal;
+      language?: ExplainLanguage;
+    },
   ): Promise<unknown>;
 }
 
@@ -1069,6 +1242,7 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
     provider: ExplainProvider,
     input: ExplainInput,
     activePromptVersion: string,
+    activeLanguage?: ExplainLanguage,
   ): Promise<unknown> {
     const deadline = Date.now() + deadlineMs;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1084,6 +1258,7 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
           provider.explain(input, {
             promptVersion: activePromptVersion,
             signal: controller.signal,
+            ...(activeLanguage ? { language: activeLanguage } : {}),
           }),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
@@ -1118,11 +1293,19 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
 
   async function explainFromInput(
     input: ExplainInput,
-    override?: { enabled?: boolean; promptVersion?: string },
+    override?: {
+      enabled?: boolean;
+      promptVersion?: string;
+      language?: ExplainLanguage;
+    },
   ): Promise<{ explanation: ReportExplanation; cacheHit: boolean }> {
     const enabled = override?.enabled ?? options.enabled ?? false;
     const provider = options.provider ?? null;
     const activePromptVersion = override?.promptVersion ?? promptVersion;
+    const activeLanguage =
+      activePromptVersion === EXPLAIN_PROMPT_VERSION_V3
+        ? (override?.language ?? "en")
+        : undefined;
 
     if (!enabled) {
       return {
@@ -1143,7 +1326,12 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
       };
     }
 
-    const key = explainCacheKey(input, activePromptVersion, provider.model);
+    const key = explainCacheKey(
+      input,
+      activePromptVersion,
+      provider.model,
+      activeLanguage,
+    );
     const cached = getCached(key);
     if (cached) {
       return { explanation: cached, cacheHit: true };
@@ -1154,11 +1342,13 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
         provider,
         input,
         activePromptVersion,
+        activeLanguage,
       );
       const validated = validateAiResponse(raw, input, {
         model: provider.model,
         promptVersion: activePromptVersion,
         cached: false,
+        ...(activeLanguage ? { language: activeLanguage } : {}),
       });
       setCached(key, validated);
       return { explanation: validated, cacheHit: false };
@@ -1175,7 +1365,11 @@ export function createExplainService(options: ExplainServiceOptions = {}) {
 
   async function explainReport(
     rawBody: ReportBody,
-    override?: { enabled?: boolean; promptVersion?: string },
+    override?: {
+      enabled?: boolean;
+      promptVersion?: string;
+      language?: ExplainLanguage;
+    },
   ): Promise<{ explanation: ReportExplanation; cacheHit: boolean }> {
     const { input } = buildExplainInput(rawBody);
     return explainFromInput(input, override);

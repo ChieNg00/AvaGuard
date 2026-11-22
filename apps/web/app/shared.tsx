@@ -85,6 +85,7 @@ export function AddressForm({ action }: { action: "scan" | "lookup" }) {
             reportHash={result.data.reportHash}
             initialExplanation={result.data.explanation}
             aiEnabled={result.data.aiEnabled}
+            aiPromptVersion={result.data.aiPromptVersion}
             explainToken={result.data.explainToken}
             publicationConfig={result.data.publication}
           />

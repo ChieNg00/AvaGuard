@@ -7,6 +7,7 @@ import {
   collectEvidence,
   createHttpTransport,
   decimalSchema,
+  EXPLAIN_PROMPT_VERSION,
   hashSchema,
   replayReport,
   parseReportBody,
@@ -94,6 +95,10 @@ export async function scan(target: string) {
       let explanation: ReportExplanation;
       let aiEnabled = false;
       let explainToken: string | null = null;
+      const aiPromptVersion =
+        typeof runtime.promptVersion === "function"
+          ? runtime.promptVersion()
+          : EXPLAIN_PROMPT_VERSION;
 
       if (runtime.isAiEnabled()) {
         const reg = runtime.tryRegisterBody(result.body);
@@ -129,6 +134,7 @@ export async function scan(target: string) {
         reportHash: result.reportHash,
         explanation,
         aiEnabled,
+        aiPromptVersion,
         explainToken,
         publication: serverConfig.publication,
       } as const;
