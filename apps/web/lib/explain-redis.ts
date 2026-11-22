@@ -7,8 +7,8 @@ import {
 
 export const DEFAULT_REDIS_CACHE_TTL_SECONDS = 86_400;
 export const DEFAULT_REDIS_OP_TIMEOUT_MS = 1_500;
-export const DEFAULT_RATE_LIMIT_PER_MIN = 10;
-export const DEFAULT_RATE_LIMIT_GLOBAL_PER_MIN = 60;
+export const DEFAULT_RATE_LIMIT_PER_MIN = 6;
+export const DEFAULT_RATE_LIMIT_GLOBAL_PER_MIN = 15;
 export const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 export const EXPLAIN_RATE_LIMIT_FALLBACK_REASON =
   "AI rate limit reached; showing template.";

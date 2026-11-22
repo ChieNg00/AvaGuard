@@ -16,6 +16,9 @@ import {
   createExplainRateLimiter,
   createUpstashExplainCache,
   createUpstashRedisClient,
+  DEFAULT_RATE_LIMIT_GLOBAL_PER_MIN,
+  DEFAULT_RATE_LIMIT_PER_MIN,
+  DEFAULT_REDIS_CACHE_TTL_SECONDS,
   EXPLAIN_RATE_LIMIT_FALLBACK_REASON,
   extractClientIp,
   hashClientIp,
@@ -685,7 +688,20 @@ describe("Upstash Redis L2 shared cache & rate limiting", () => {
     expect(calls).toBe(1);
   });
 
-  it("configures Redis from UPSTASH_REDIS_REST_* or KV_REST_API_* env vars and rejects invalid Redis URLs safely", () => {
+  it("configures Redis from UPSTASH_REDIS_REST_* or KV_REST_API_* env vars, exposes free-tier quota defaults, and rejects invalid Redis URLs safely", async () => {
+    expect(DEFAULT_REDIS_CACHE_TTL_SECONDS).toBe(86_400);
+    expect(DEFAULT_RATE_LIMIT_PER_MIN).toBe(6);
+    expect(DEFAULT_RATE_LIMIT_GLOBAL_PER_MIN).toBe(15);
+
+    const defaultLimitResult =
+      await createExplainRateLimiter().check("203.0.113.99");
+    expect(defaultLimitResult).toMatchObject({
+      allowed: true,
+      limit: 6,
+      remaining: 5,
+      scope: "ip",
+    });
+
     expect(() =>
       createUpstashRedisClient({
         url: "http://untrusted-redis.example.com",
