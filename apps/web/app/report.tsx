@@ -8,6 +8,7 @@ import {
   type ReportBody,
   type ReportExplanation,
 } from "@avaguard/analyzer";
+import { formatReportMarkdown } from "../lib/export-markdown";
 import type { PublicPublicationConfig } from "../lib/publication-config";
 import { Publish } from "./publish";
 
@@ -39,12 +40,14 @@ export function ExplanationPanel({
   explanation,
   pending = false,
   language,
+  onRequestAi,
   onLanguageChange,
   onRetry,
 }: {
   explanation: ReportExplanation;
   pending?: boolean;
   language?: ExplainLanguage;
+  onRequestAi?: () => void;
   onLanguageChange?: (language: ExplainLanguage) => void;
   onRetry?: () => void;
 }) {
@@ -58,7 +61,7 @@ export function ExplanationPanel({
       <div className="explain-header">
         <h3>Explanation</h3>
         <span className="provenance-badge">{provenanceLabel}</span>
-        {onLanguageChange && (
+        {onLanguageChange ? (
           <div
             className="explain-lang"
             role="group"
@@ -83,6 +86,17 @@ export function ExplanationPanel({
               Tiếng Việt
             </button>
           </div>
+        ) : (
+          onRequestAi && (
+            <button
+              type="button"
+              className="explain-trigger"
+              disabled={pending}
+              onClick={onRequestAi}
+            >
+              Explain with AI
+            </button>
+          )
         )}
       </div>
       {explanation.provenance === "ai-assisted" && explanation.model && (
@@ -278,16 +292,24 @@ export function Report({
     retryNonce,
   ]);
 
-  function download() {
-    const url = URL.createObjectURL(
-      new Blob([canonicalReportJson(body)], { type: "application/json" }),
-    );
+  function downloadFile(content: string, type: string, extension: string) {
+    const url = URL.createObjectURL(new Blob([content], { type }));
     const link = document.createElement("a");
     link.href = url;
     link.download =
-      "avaguard-" + body.address + "-" + body.blockNumber + ".json";
+      "avaguard-" + body.address + "-" + body.blockNumber + "." + extension;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function download() {
+    downloadFile(canonicalReportJson(body), "application/json", "json");
+  }
+  function downloadMarkdown() {
+    downloadFile(
+      formatReportMarkdown(body, explanation),
+      "text/markdown;charset=utf-8",
+      "md",
+    );
   }
   return (
     <section>
@@ -338,8 +360,13 @@ export function Report({
         }
         onRetry={aiEnabled ? handleRetry : undefined}
       />
-      <p>
-        <button onClick={download}>Export canonical JSON</button>
+      <p className="action-row">
+        <button type="button" onClick={download}>
+          Export canonical JSON
+        </button>
+        <button type="button" className="secondary" onClick={downloadMarkdown}>
+          Export Markdown
+        </button>
       </p>
       <Publish
         key={body.blockHash + body.address}
