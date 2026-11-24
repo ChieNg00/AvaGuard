@@ -19,3 +19,7 @@ section{overflow-wrap:anywhere}pre{white-space:pre-wrap;max-height:24rem;overflo
 .explain-ai-note{color:var(--text)}
 .explain-fallback{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0;color:var(--muted)}
 .explain-retry{background:transparent;color:var(--accent);border:1px solid #465b59;padding:3px 10px;font-size:12px;border-radius:6px}
+.explain-trigger{margin-left:auto;background:transparent;color:var(--accent);border:1px solid #465b59;padding:4px 12px;font-size:12px;border-radius:40px}
+.action-row{display:flex;gap:10px;flex-wrap:wrap;margin:1rem 0}
+button.secondary{background:transparent;color:var(--text);border-color:#465b59}
+button.secondary:disabled{color:var(--muted);border-color:#526269;cursor:default}

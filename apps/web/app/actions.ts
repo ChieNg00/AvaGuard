@@ -11,10 +11,20 @@ import {
   hashSchema,
   replayReport,
   parseReportBody,
+  reportHash,
+  type ReportBody,
   type ReportExplanation,
 } from "@avaguard/analyzer";
-import { createPublicClient, getAddress, http, keccak256 } from "viem";
+import {
+  createPublicClient,
+  getAddress,
+  http,
+  keccak256,
+  toFunctionSelector,
+  type Hex,
+} from "viem";
 import { getExplainRuntime } from "../lib/explain-server";
+import { agrees } from "../lib/publication";
 import { registryAbi as abi, registryRuntimeHash } from "../lib/registry-abi";
 import { getServerConfig } from "../lib/server-config";
 
@@ -69,6 +79,73 @@ async function registry(config = getServerConfig()) {
     codehash: keccak256(code),
   };
 }
+function prepareExplanationForBody(
+  body: ReportBody,
+  hash: string,
+  band: string,
+): {
+  explanation: ReportExplanation;
+  aiEnabled: boolean;
+  aiPromptVersion: string;
+  explainToken: string | null;
+} {
+  const runtime = getExplainRuntime();
+  const fallbackUnavailable = (reason: string): ReportExplanation => ({
+    provenance: "template",
+    reportHash: hash,
+    rulesetVersion: body.rulesetVersion,
+    signalScore: body.signalScore,
+    band,
+    overview:
+      "Template explanation is unavailable for part of this report; deterministic report fields, canonical JSON export, and publication remain available.",
+    findings: [],
+    coverageSummary: "",
+    fallbackReason: reason,
+  });
+
+  let explanation: ReportExplanation;
+  let aiEnabled = false;
+  let explainToken: string | null = null;
+  const aiPromptVersion =
+    typeof runtime.promptVersion === "function"
+      ? runtime.promptVersion()
+      : EXPLAIN_PROMPT_VERSION;
+
+  if (runtime.isAiEnabled()) {
+    const reg = runtime.tryRegisterBody(body);
+    if (reg.ok) {
+      explanation = reg.template;
+      aiEnabled = true;
+      explainToken = reg.explainToken;
+    } else {
+      const reason =
+        reg.code === "oversized-input"
+          ? "AI explanation skipped: report projection exceeds the 16,384-byte input limit; showing template."
+          : "AI explanation unavailable for this report; showing template.";
+      try {
+        explanation = buildTemplateExplanation(body, reason);
+      } catch {
+        explanation = fallbackUnavailable(reason);
+      }
+    }
+  } else {
+    try {
+      explanation = buildTemplateExplanation(body);
+    } catch {
+      explanation = fallbackUnavailable(
+        "Template explanation unavailable for this report.",
+      );
+    }
+  }
+
+  return {
+    explanation,
+    aiEnabled,
+    aiPromptVersion,
+    explainToken,
+  };
+}
+
 export async function scan(target: string) {
   return safely(async () => {
     const serverConfig = getServerConfig();
@@ -78,64 +155,18 @@ export async function scan(target: string) {
       }),
     );
     if (result.status === "complete") {
-      const runtime = getExplainRuntime();
-      const fallbackUnavailable = (reason: string): ReportExplanation => ({
-        provenance: "template",
-        reportHash: result.reportHash,
-        rulesetVersion: result.body.rulesetVersion,
-        signalScore: result.body.signalScore,
-        band: result.band,
-        overview:
-          "Template explanation is unavailable for part of this report; deterministic report fields, canonical JSON export, and publication remain available.",
-        findings: [],
-        coverageSummary: "",
-        fallbackReason: reason,
-      });
-
-      let explanation: ReportExplanation;
-      let aiEnabled = false;
-      let explainToken: string | null = null;
-      const aiPromptVersion =
-        typeof runtime.promptVersion === "function"
-          ? runtime.promptVersion()
-          : EXPLAIN_PROMPT_VERSION;
-
-      if (runtime.isAiEnabled()) {
-        const reg = runtime.tryRegisterBody(result.body);
-        if (reg.ok) {
-          explanation = reg.template;
-          aiEnabled = true;
-          explainToken = reg.explainToken;
-        } else {
-          const reason =
-            reg.code === "oversized-input"
-              ? "AI explanation skipped: report projection exceeds the 16,384-byte input limit; showing template."
-              : "AI explanation unavailable for this report; showing template.";
-          try {
-            explanation = buildTemplateExplanation(result.body, reason);
-          } catch {
-            explanation = fallbackUnavailable(reason);
-          }
-        }
-      } else {
-        try {
-          explanation = buildTemplateExplanation(result.body);
-        } catch {
-          explanation = fallbackUnavailable(
-            "Template explanation unavailable for this report.",
-          );
-        }
-      }
+      const prepared = prepareExplanationForBody(
+        result.body,
+        result.reportHash,
+        result.band,
+      );
 
       return {
         status: result.status,
         band: result.band,
         body: result.body,
         reportHash: result.reportHash,
-        explanation,
-        aiEnabled,
-        aiPromptVersion,
-        explainToken,
+        ...prepared,
         publication: serverConfig.publication,
       } as const;
     }
@@ -143,6 +174,144 @@ export async function scan(target: string) {
       ...result,
       explanation: buildIncompleteExplanation(result),
       publication: serverConfig.publication,
+    } as const;
+  });
+}
+
+const UNKNOWN_REPORT_SELECTOR = toFunctionSelector("UnknownReport()");
+
+function isUnknownReportRevert(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let cursor: unknown = err;
+  while (cursor && typeof cursor === "object" && !seen.has(cursor)) {
+    seen.add(cursor);
+    const record = cursor as {
+      shortMessage?: unknown;
+      message?: unknown;
+      raw?: unknown;
+      data?: unknown;
+      cause?: unknown;
+    };
+    if (
+      record.data &&
+      typeof record.data === "object" &&
+      (record.data as { errorName?: unknown }).errorName === "UnknownReport"
+    ) {
+      return true;
+    }
+    if (
+      typeof record.data === "string" &&
+      record.data.toLowerCase().startsWith(UNKNOWN_REPORT_SELECTOR)
+    ) {
+      return true;
+    }
+    if (
+      typeof record.raw === "string" &&
+      record.raw.toLowerCase().startsWith(UNKNOWN_REPORT_SELECTOR)
+    ) {
+      return true;
+    }
+    if (
+      (typeof record.shortMessage === "string" &&
+        record.shortMessage.includes("UnknownReport")) ||
+      (typeof record.message === "string" &&
+        record.message.includes("UnknownReport"))
+    ) {
+      return true;
+    }
+    cursor = record.cause;
+  }
+  return false;
+}
+
+/**
+ * Verifies an imported canonical report against a published RiskRegistry commitment
+ * before registering an explain projection or minting a bounded HMAC explain token.
+ */
+export async function prepareImportedExplanation(
+  rawBody: unknown,
+  expectedHash: string,
+) {
+  return safely(async () => {
+    const expected = hashSchema.safeParse(
+      typeof expectedHash === "string" ? expectedHash.toLowerCase() : "",
+    );
+    if (!expected.success) {
+      throw new DisplayError("Invalid report hash.");
+    }
+    const parsedHash = expected.data;
+
+    let body: ReportBody;
+    try {
+      body = parseReportBody(rawBody);
+    } catch {
+      throw new DisplayError("Invalid canonical report body.");
+    }
+
+    const computedHash = reportHash(body);
+    if (computedHash !== parsedHash) {
+      throw new DisplayError("Report hash mismatch.");
+    }
+
+    let onChain: {
+      report: {
+        target: Hex;
+        score: number;
+        codehash: Hex;
+        implementation: Hex;
+        reportHash: Hex;
+        rulesetVersion: number;
+        blockNumber: bigint;
+        blockHash: Hex;
+      };
+      attester: Hex;
+      publishedAt: bigint;
+    };
+    try {
+      const { client, config } = await registry();
+      onChain = await client.readContract({
+        ...config,
+        functionName: "getReport",
+        args: [parsedHash as Hex],
+      });
+    } catch (err) {
+      if (err instanceof DisplayError) {
+        throw err;
+      }
+      if (isUnknownReportRevert(err)) {
+        throw new DisplayError("Report commitment not found in registry.");
+      }
+      throw new DisplayError("Could not verify the commitment. Please retry.");
+    }
+
+    if (
+      onChain.publishedAt <= 0n ||
+      onChain.report.reportHash.toLowerCase() !== parsedHash
+    ) {
+      throw new DisplayError("Report commitment not found in registry.");
+    }
+
+    if (
+      !agrees(body, {
+        ...onChain.report,
+        blockNumber: onChain.report.blockNumber.toString(),
+      })
+    ) {
+      throw new DisplayError(
+        "Imported report disagrees with the on-chain commitment.",
+      );
+    }
+
+    const band =
+      body.signalScore < 25
+        ? "Few signals"
+        : body.signalScore < 60
+          ? "Some signals"
+          : "Many signals";
+
+    return {
+      reportHash: computedHash,
+      ...prepareExplanationForBody(body, computedHash, band),
     } as const;
   });
 }
@@ -225,6 +394,13 @@ export async function lookup(value: string, index?: string) {
       functionName: "isCodeStale",
       args: [item.report.reportHash],
     });
+    const runtime = getExplainRuntime();
+    const aiEnabled =
+      typeof runtime.isAiEnabled === "function" ? runtime.isAiEnabled() : false;
+    const aiPromptVersion =
+      typeof runtime.promptVersion === "function"
+        ? runtime.promptVersion()
+        : EXPLAIN_PROMPT_VERSION;
     return {
       report: {
         ...item.report,
@@ -234,6 +410,8 @@ export async function lookup(value: string, index?: string) {
       publishedAt: item.publishedAt.toString(),
       count: count.toString(),
       stale,
+      aiEnabled,
+      aiPromptVersion,
     };
   });
 }
