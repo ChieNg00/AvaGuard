@@ -93,12 +93,14 @@ export async function scan(target: string) {
 
       let explanation: ReportExplanation;
       let aiEnabled = false;
+      let explainToken: string | null = null;
 
       if (runtime.isAiEnabled()) {
         const reg = runtime.tryRegisterBody(result.body);
         if (reg.ok) {
           explanation = reg.template;
           aiEnabled = true;
+          explainToken = reg.explainToken;
         } else {
           const reason =
             reg.code === "oversized-input"
@@ -127,6 +129,7 @@ export async function scan(target: string) {
         reportHash: result.reportHash,
         explanation,
         aiEnabled,
+        explainToken,
         publication: serverConfig.publication,
       } as const;
     }

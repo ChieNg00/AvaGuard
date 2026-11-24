@@ -111,6 +111,7 @@ export function Report({
   reportHash,
   initialExplanation,
   aiEnabled,
+  explainToken = null,
   publicationConfig,
 }: {
   body: ReportBody;
@@ -118,6 +119,7 @@ export function Report({
   reportHash: string;
   initialExplanation: ReportExplanation;
   aiEnabled: boolean;
+  explainToken?: string | null;
   publicationConfig: PublicPublicationConfig;
 }) {
   const [explanation, setExplanation] =
@@ -130,13 +132,16 @@ export function Report({
     let cancelled = false;
     const controller = new AbortController();
     const expectedHash = reportHash;
+    const payload = explainToken
+      ? { reportHash: expectedHash, explainToken }
+      : { reportHash: expectedHash };
 
     void (async () => {
       try {
         const response = await fetch("/api/explain", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ reportHash: expectedHash }),
+          body: JSON.stringify(payload),
           signal: controller.signal,
         });
         const data = (await response.json()) as {
@@ -180,7 +185,7 @@ export function Report({
       cancelled = true;
       controller.abort();
     };
-  }, [aiEnabled, initialExplanation, reportHash]);
+  }, [aiEnabled, explainToken, initialExplanation, reportHash]);
 
   function download() {
     const url = URL.createObjectURL(

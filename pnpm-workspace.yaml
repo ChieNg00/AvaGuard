@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/analyzer
+allowBuilds:
+  protobufjs: false
 minimumReleaseAgeExclude:
   - '@next/env@16.4.6'
   - '@next/eslint-plugin-next@16.4.6'
