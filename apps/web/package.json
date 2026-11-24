@@ -11,6 +11,7 @@
   "dependencies": {
     "@avaguard/analyzer": "workspace:*",
     "@google/genai": "3.6.1",
+    "@upstash/redis": "1.41.0",
     "next": "16.4.6",
     "react": "19.3.1",
     "react-dom": "19.3.1",

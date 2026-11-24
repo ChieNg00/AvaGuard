@@ -6,6 +6,10 @@ import {
 } from "@avaguard/analyzer";
 import { BoundedReadError, readBoundedJson } from "../../../lib/bounded-read";
 import {
+  extractClientIp,
+  type ExplainRateLimitResult,
+} from "../../../lib/explain-redis";
+import {
   getExplainRuntime,
   MAX_HASH_REQUEST_BYTES,
   MAX_TOKEN_REQUEST_BYTES,
@@ -94,28 +98,33 @@ export async function POST(request: Request) {
     parsedLanguage = langResult.data;
   }
 
+  const clientIp = extractClientIp(request);
   const hasToken = Object.prototype.hasOwnProperty.call(record, "explainToken");
   let result:
-    | { ok: true; status: 200; explanation: unknown }
+    | {
+        ok: true;
+        status: 200;
+        explanation: unknown;
+        rateLimit?: ExplainRateLimitResult;
+      }
     | { ok: false; status: 400 | 404; error: string };
 
   if (!hasToken) {
-    result = parsedLanguage
-      ? await runtime.explainByHash(parsedHash.data, parsedLanguage)
-      : await runtime.explainByHash(parsedHash.data);
+    result = await runtime.explainByHash(parsedHash.data, parsedLanguage, {
+      clientIp,
+    });
   } else if (
     tokenMode &&
     typeof record.explainToken === "string" &&
     record.explainToken.length > 0 &&
     typeof runtime.explainByToken === "function"
   ) {
-    result = parsedLanguage
-      ? await runtime.explainByToken(
-          parsedHash.data,
-          record.explainToken,
-          parsedLanguage,
-        )
-      : await runtime.explainByToken(parsedHash.data, record.explainToken);
+    result = await runtime.explainByToken(
+      parsedHash.data,
+      record.explainToken,
+      parsedLanguage,
+      { clientIp },
+    );
   } else {
     return NextResponse.json(
       { ok: false, error: "Invalid explain request payload." },
@@ -129,8 +138,21 @@ export async function POST(request: Request) {
       { status: result.status },
     );
   }
+  const headers: Record<string, string> = {};
+  if ("rateLimit" in result && result.rateLimit) {
+    headers["X-RateLimit-Limit"] = String(result.rateLimit.limit);
+    headers["X-RateLimit-Remaining"] = String(result.rateLimit.remaining);
+    headers["X-RateLimit-Reset"] = String(
+      Math.ceil(result.rateLimit.resetMs / 1_000),
+    );
+    if (!result.rateLimit.allowed) {
+      headers["Retry-After"] = String(
+        Math.max(1, Math.ceil((result.rateLimit.resetMs - Date.now()) / 1_000)),
+      );
+    }
+  }
   return NextResponse.json(
     { ok: true, explanation: result.explanation },
-    { status: 200 },
+    { status: 200, ...(Object.keys(headers).length > 0 ? { headers } : {}) },
   );
 }

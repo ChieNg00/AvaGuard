@@ -15,10 +15,23 @@ import {
   type ExplainInput,
   type ExplainLanguage,
   type ExplainProvider,
+  type ExplainSharedCache,
   type ReportBody,
   type ReportExplanation,
 } from "@avaguard/analyzer";
 import { BoundedReadError, readBoundedJson } from "./bounded-read";
+import {
+  createExplainRateLimiter,
+  createUpstashExplainCache,
+  createUpstashRedisClient,
+  DEFAULT_RATE_LIMIT_GLOBAL_PER_MIN,
+  DEFAULT_RATE_LIMIT_PER_MIN,
+  DEFAULT_REDIS_CACHE_TTL_SECONDS,
+  EXPLAIN_RATE_LIMIT_FALLBACK_REASON,
+  type ExplainRateLimiter,
+  type ExplainRateLimitResult,
+  type UpstashRedisClientLike,
+} from "./explain-redis";
 import {
   createGeminiExplainProvider,
   DEFAULT_GEMINI_EXPLAIN_MODEL,
@@ -56,6 +69,8 @@ export type ExplainRuntimeConfig = {
   maxAttempts?: number;
   projectionTtlMs?: number;
   maxProjections?: number;
+  sharedCache?: ExplainSharedCache | null;
+  rateLimiter?: ExplainRateLimiter | null;
   now?: () => number;
 };
 
@@ -364,6 +379,7 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
     requestTimeoutMs: config.requestTimeoutMs,
     deadlineMs: config.deadlineMs,
     maxAttempts: config.maxAttempts,
+    sharedCache: config.sharedCache,
   });
 
   function pruneExpired(currentTime: number) {
@@ -429,11 +445,54 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
     }
   }
 
+  async function explainInputWithRateLimit(
+    input: ExplainInput,
+    language?: ExplainLanguage,
+    options?: { clientIp?: string },
+  ): Promise<{
+    ok: true;
+    status: 200;
+    explanation: ReportExplanation;
+    rateLimit?: ExplainRateLimitResult;
+  }> {
+    let rateLimit: ExplainRateLimitResult | undefined;
+    const { explanation } = await service.explainFromInput(input, {
+      ...(activePromptVersion === EXPLAIN_PROMPT_VERSION_V3 && language
+        ? { language }
+        : {}),
+      ...(config.rateLimiter
+        ? {
+            beforeProviderCall: async () => {
+              rateLimit = await config.rateLimiter!.check(options?.clientIp);
+              return rateLimit.allowed
+                ? { allowed: true }
+                : {
+                    allowed: false,
+                    fallbackReason: EXPLAIN_RATE_LIMIT_FALLBACK_REASON,
+                  };
+            },
+          }
+        : {}),
+    });
+    return {
+      ok: true,
+      status: 200,
+      explanation,
+      ...(rateLimit ? { rateLimit } : {}),
+    };
+  }
+
   async function explainByHash(
     rawHash: string,
     language?: ExplainLanguage,
+    options?: { clientIp?: string },
   ): Promise<
-    | { ok: true; status: 200; explanation: ReportExplanation }
+    | {
+        ok: true;
+        status: 200;
+        explanation: ReportExplanation;
+        rateLimit?: ExplainRateLimitResult;
+      }
     | { ok: false; status: 400 | 404; error: string }
   > {
     const parsedHash = hashSchema.safeParse(rawHash.toLowerCase());
@@ -456,21 +515,21 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
       return { ok: true, status: 200, explanation: entry.template };
     }
 
-    const { explanation } = await service.explainFromInput(
-      entry.input,
-      activePromptVersion === EXPLAIN_PROMPT_VERSION_V3 && language
-        ? { language }
-        : undefined,
-    );
-    return { ok: true, status: 200, explanation };
+    return explainInputWithRateLimit(entry.input, language, options);
   }
 
   async function explainByToken(
     rawHash: string,
     rawToken: string,
     language?: ExplainLanguage,
+    options?: { clientIp?: string },
   ): Promise<
-    | { ok: true; status: 200; explanation: ReportExplanation }
+    | {
+        ok: true;
+        status: 200;
+        explanation: ReportExplanation;
+        rateLimit?: ExplainRateLimitResult;
+      }
     | { ok: false; status: 400 | 404; error: string }
   > {
     const parsedHash = hashSchema.safeParse(rawHash.toLowerCase());
@@ -503,13 +562,7 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
       };
     }
 
-    const { explanation } = await service.explainFromInput(
-      verified.input,
-      activePromptVersion === EXPLAIN_PROMPT_VERSION_V3 && language
-        ? { language }
-        : undefined,
-    );
-    return { ok: true, status: 200, explanation };
+    return explainInputWithRateLimit(verified.input, language, options);
   }
 
   return {
@@ -522,6 +575,58 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
     explainByToken,
     projectionCount: () => projections.size,
   };
+}
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw || !/^\d+$/.test(raw)) {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readConfiguredRedisFromEnv(): {
+  redis: UpstashRedisClientLike | null;
+  cacheTtlSeconds: number;
+  ipLimit: number;
+  globalLimit: number;
+} {
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL?.trim() ||
+    process.env.KV_REST_API_URL?.trim() ||
+    "";
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ||
+    process.env.KV_REST_API_TOKEN?.trim() ||
+    "";
+  const cacheTtlSeconds = readPositiveIntEnv(
+    "AVAGUARD_AI_CACHE_TTL_SECONDS",
+    DEFAULT_REDIS_CACHE_TTL_SECONDS,
+  );
+  const ipLimit = readPositiveIntEnv(
+    "AVAGUARD_AI_RATELIMIT_PER_MIN",
+    DEFAULT_RATE_LIMIT_PER_MIN,
+  );
+  const globalLimit = readPositiveIntEnv(
+    "AVAGUARD_AI_RATELIMIT_GLOBAL_PER_MIN",
+    DEFAULT_RATE_LIMIT_GLOBAL_PER_MIN,
+  );
+
+  if (!url || !token) {
+    return { redis: null, cacheTtlSeconds, ipLimit, globalLimit };
+  }
+
+  try {
+    return {
+      redis: createUpstashRedisClient({ url, token }),
+      cacheTtlSeconds,
+      ipLimit,
+      globalLimit,
+    };
+  } catch {
+    return { redis: null, cacheTtlSeconds, ipLimit, globalLimit };
+  }
 }
 
 const RUNTIME_KEY = Symbol.for("avaguard.m6.explainRuntime");
@@ -537,13 +642,35 @@ export function getExplainRuntime() {
     // AVAGUARD_AI_ENABLED=1 and AVAGUARD_AI_PROVIDER=gemini must be set explicitly.
     const { provider, promptVersion, requestTimeoutMs, deadlineMs } =
       readConfiguredExplainProvider();
+    const tokenSecret = readExplainSecret();
+    let sharedCache: ExplainSharedCache | null = null;
+    let rateLimiter: ExplainRateLimiter | null = null;
+
+    if (provider !== null) {
+      const redisConfig = readConfiguredRedisFromEnv();
+      if (redisConfig.redis) {
+        sharedCache = createUpstashExplainCache({
+          redis: redisConfig.redis,
+          ttlSeconds: redisConfig.cacheTtlSeconds,
+        });
+      }
+      rateLimiter = createExplainRateLimiter({
+        redis: redisConfig.redis,
+        ipLimit: redisConfig.ipLimit,
+        globalLimit: redisConfig.globalLimit,
+        salt: tokenSecret ?? undefined,
+      });
+    }
+
     g[RUNTIME_KEY] = createExplainRuntime({
       enabled: provider !== null,
       provider,
-      tokenSecret: readExplainSecret(),
+      tokenSecret,
       promptVersion,
       requestTimeoutMs,
       deadlineMs,
+      sharedCache,
+      rateLimiter,
     });
   }
   return g[RUNTIME_KEY];
