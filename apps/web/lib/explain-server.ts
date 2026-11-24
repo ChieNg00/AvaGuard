@@ -5,6 +5,7 @@ import {
   canonicalExplainInputJson,
   createExplainService,
   EXPLAIN_PROMPT_VERSION,
+  EXPLAIN_PROMPT_VERSION_V3,
   explainInputSchema,
   ExplainInputError,
   ExplainProviderError,
@@ -12,6 +13,7 @@ import {
   MAX_EXPLAIN_INPUT_BYTES,
   MAX_EXPLAIN_OUTPUT_BYTES,
   type ExplainInput,
+  type ExplainLanguage,
   type ExplainProvider,
   type ReportBody,
   type ReportExplanation,
@@ -30,8 +32,8 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "[::1]", "localhost"]);
 export const MIN_EXPLAIN_SECRET_LENGTH = 32;
 export const MAX_HASH_REQUEST_BYTES = 512;
 export const MAX_TOKEN_REQUEST_BYTES = 24_576;
-export const GEMINI_REQUEST_TIMEOUT_MS = 8_000;
-export const GEMINI_DEADLINE_MS = 14_000;
+export const GEMINI_REQUEST_TIMEOUT_MS = 18_000;
+export const GEMINI_DEADLINE_MS = 25_000;
 
 const MAX_EXPLAIN_TOKEN_CHARS = 24_000;
 const MAX_TOKEN_PAYLOAD_BYTES = MAX_EXPLAIN_INPUT_BYTES + 256;
@@ -212,10 +214,20 @@ function readExplainSecret(): string | null {
 
 function readConfiguredExplainProvider(): {
   provider: ExplainProvider | null;
+  promptVersion?: string;
   requestTimeoutMs?: number;
   deadlineMs?: number;
 } {
   if (process.env.AVAGUARD_AI_ENABLED !== "1") {
+    return { provider: null };
+  }
+
+  const rawPromptVersion = process.env.AVAGUARD_AI_PROMPT_VERSION?.trim();
+  if (
+    rawPromptVersion &&
+    rawPromptVersion !== EXPLAIN_PROMPT_VERSION &&
+    rawPromptVersion !== EXPLAIN_PROMPT_VERSION_V3
+  ) {
     return { provider: null };
   }
 
@@ -234,6 +246,7 @@ function readConfiguredExplainProvider(): {
         apiKey,
         model: rawModel || DEFAULT_GEMINI_EXPLAIN_MODEL,
       }),
+      promptVersion: rawPromptVersion || EXPLAIN_PROMPT_VERSION_V3,
       requestTimeoutMs: GEMINI_REQUEST_TIMEOUT_MS,
       deadlineMs: GEMINI_DEADLINE_MS,
     };
@@ -253,6 +266,7 @@ function readConfiguredExplainProvider(): {
       endpoint: localEndpoint,
       model: process.env.AVAGUARD_LOCAL_EXPLAIN_MODEL || undefined,
     }),
+    promptVersion: rawPromptVersion || EXPLAIN_PROMPT_VERSION,
   };
 }
 
@@ -341,11 +355,12 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
   const rawSecret = config.tokenSecret?.trim() ?? "";
   const tokenSecret =
     rawSecret.length >= MIN_EXPLAIN_SECRET_LENGTH ? rawSecret : null;
+  const activePromptVersion = config.promptVersion ?? EXPLAIN_PROMPT_VERSION;
 
   const service = createExplainService({
     enabled: config.enabled,
     provider: config.provider,
-    promptVersion: config.promptVersion ?? EXPLAIN_PROMPT_VERSION,
+    promptVersion: activePromptVersion,
     requestTimeoutMs: config.requestTimeoutMs,
     deadlineMs: config.deadlineMs,
     maxAttempts: config.maxAttempts,
@@ -414,7 +429,10 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
     }
   }
 
-  async function explainByHash(rawHash: string): Promise<
+  async function explainByHash(
+    rawHash: string,
+    language?: ExplainLanguage,
+  ): Promise<
     | { ok: true; status: 200; explanation: ReportExplanation }
     | { ok: false; status: 400 | 404; error: string }
   > {
@@ -438,13 +456,19 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
       return { ok: true, status: 200, explanation: entry.template };
     }
 
-    const { explanation } = await service.explainFromInput(entry.input);
+    const { explanation } = await service.explainFromInput(
+      entry.input,
+      activePromptVersion === EXPLAIN_PROMPT_VERSION_V3 && language
+        ? { language }
+        : undefined,
+    );
     return { ok: true, status: 200, explanation };
   }
 
   async function explainByToken(
     rawHash: string,
     rawToken: string,
+    language?: ExplainLanguage,
   ): Promise<
     | { ok: true; status: 200; explanation: ReportExplanation }
     | { ok: false; status: 400 | 404; error: string }
@@ -479,13 +503,19 @@ export function createExplainRuntime(config: ExplainRuntimeConfig) {
       };
     }
 
-    const { explanation } = await service.explainFromInput(verified.input);
+    const { explanation } = await service.explainFromInput(
+      verified.input,
+      activePromptVersion === EXPLAIN_PROMPT_VERSION_V3 && language
+        ? { language }
+        : undefined,
+    );
     return { ok: true, status: 200, explanation };
   }
 
   return {
     isAiEnabled: () => config.enabled && config.provider !== null,
     hasTokenSecret: () => tokenSecret !== null,
+    promptVersion: () => activePromptVersion,
     registerBody,
     tryRegisterBody,
     explainByHash,
@@ -505,12 +535,13 @@ export function getExplainRuntime() {
   if (!g[RUNTIME_KEY]) {
     // Ambient GEMINI_API_KEY alone does not authorize live external provider calls;
     // AVAGUARD_AI_ENABLED=1 and AVAGUARD_AI_PROVIDER=gemini must be set explicitly.
-    const { provider, requestTimeoutMs, deadlineMs } =
+    const { provider, promptVersion, requestTimeoutMs, deadlineMs } =
       readConfiguredExplainProvider();
     g[RUNTIME_KEY] = createExplainRuntime({
       enabled: provider !== null,
       provider,
       tokenSecret: readExplainSecret(),
+      promptVersion,
       requestTimeoutMs,
       deadlineMs,
     });

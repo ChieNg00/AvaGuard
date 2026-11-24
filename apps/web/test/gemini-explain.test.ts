@@ -3,11 +3,13 @@ import {
   buildExplainInput,
   canonicalReportJson,
   EXPLAIN_PROMPT_VERSION,
+  EXPLAIN_PROMPT_VERSION_V3,
   MAX_EXPLAIN_INPUT_BYTES,
   MAX_EXPLAIN_OUTPUT_BYTES,
   parseReportBody,
   reportHash,
   type ExplainInput,
+  type ExplainLanguage,
   type ReportBody,
 } from "@avaguard/analyzer";
 import vector from "../../../fixtures/canonical-report-v1.json";
@@ -678,5 +680,209 @@ describe("Stateless HMAC-SHA256 explain tokens for serverless deployment", () =>
     );
     expect(providerCalls).toBe(1);
     expect(MAX_EXPLAIN_INPUT_BYTES).toBe(16_384);
+  });
+});
+
+function makeValidV3Selection(
+  input: ExplainInput,
+  language: ExplainLanguage = "en",
+) {
+  return {
+    narrativeOverview:
+      language === "vi"
+        ? `Bao cao ghi nhan ${input.signalScore} / 100 tin hieu va khong phai la chung nhan an toan.`
+        : `Snapshot recorded ${input.signalScore} / 100 signals and is not a safety certification.`,
+    items: input.findings.map((f) => ({
+      findingId: f.id,
+      citedEvidenceIds: [...f.evidenceIds],
+      ...(f.allowedCheckIds.length > 0
+        ? { suggestedCheckIds: [f.allowedCheckIds[0]] }
+        : {}),
+      narrative:
+        language === "vi"
+          ? `Phat hien ${f.id} dua tren bang chung da quan sat tai block.`
+          : `Finding ${f.id} reflects observed snapshot evidence.`,
+    })),
+  };
+}
+
+describe("Prompt v3 guarded EN/VI Gemini integration", () => {
+  it("sends v3 narrative schema and language instructions to Gemini for EN and VI", async () => {
+    const body = parseReportBody(vector);
+    const hash = reportHash(body);
+    const captured: Array<{
+      params: Parameters<GeminiInteractionsClient["interactions"]["create"]>[0];
+    }> = [];
+
+    const mockClient: GeminiInteractionsClient = {
+      interactions: {
+        async create(params) {
+          captured.push({ params });
+          const payload = JSON.parse(params.input) as {
+            language: ExplainLanguage;
+            report: ExplainInput;
+          };
+          return {
+            output_text: JSON.stringify(
+              makeValidV3Selection(payload.report, payload.language),
+            ),
+          };
+        },
+      },
+    };
+
+    const provider = createGeminiExplainProvider({
+      apiKey: "test-gemini-key",
+      client: mockClient,
+    });
+    const runtime = createExplainRuntime({
+      enabled: true,
+      promptVersion: EXPLAIN_PROMPT_VERSION_V3,
+      provider,
+    });
+    runtime.registerBody(body);
+
+    const enRes = await runtime.explainByHash(hash, "en");
+    expect(enRes.ok).toBe(true);
+    if (!enRes.ok) throw new Error("Expected EN v3 success");
+    expect(enRes.explanation.promptVersion).toBe("3");
+    expect(enRes.explanation.language).toBe("en");
+    expect(enRes.explanation.aiSummary).toContain("10 / 100");
+    expect(enRes.explanation.findings[0].aiNote).toBeTruthy();
+
+    const viRes = await runtime.explainByHash(hash, "vi");
+    expect(viRes.ok).toBe(true);
+    if (!viRes.ok) throw new Error("Expected VI v3 success");
+    expect(viRes.explanation.promptVersion).toBe("3");
+    expect(viRes.explanation.language).toBe("vi");
+    expect(viRes.explanation.aiSummary).toContain("10 / 100");
+
+    expect(captured).toHaveLength(2);
+    expect(captured[0].params.system_instruction).toContain("concise English");
+    expect(captured[0].params.system_instruction).toContain(
+      "possible entry points",
+    );
+    expect(captured[1].params.system_instruction).toContain(
+      "natural Vietnamese",
+    );
+    expect(captured[1].params.system_instruction).toContain(
+      "tiếng Việt có dấu đầy đủ",
+    );
+    expect(captured[1].params.system_instruction).toContain(
+      "possible entry points",
+    );
+    expect(captured[1].params.response_format?.schema).toMatchObject({
+      required: ["narrativeOverview", "items"],
+    });
+  });
+
+  it("defaults Gemini runtime to Prompt v3, allows AVAGUARD_AI_PROMPT_VERSION=2, and fails closed on invalid prompt versions", () => {
+    vi.stubEnv("AVAGUARD_AI_ENABLED", "1");
+    vi.stubEnv("AVAGUARD_AI_PROVIDER", "gemini");
+    vi.stubEnv("GEMINI_API_KEY", "valid-test-key");
+
+    vi.stubEnv("AVAGUARD_AI_PROMPT_VERSION", "");
+    clearExplainRuntime();
+    const defaultRuntime = getExplainRuntime();
+    expect(defaultRuntime.isAiEnabled()).toBe(true);
+    expect(defaultRuntime.promptVersion()).toBe("3");
+
+    vi.stubEnv("AVAGUARD_AI_PROMPT_VERSION", "2");
+    clearExplainRuntime();
+    const v2Runtime = getExplainRuntime();
+    expect(v2Runtime.isAiEnabled()).toBe(true);
+    expect(v2Runtime.promptVersion()).toBe("2");
+
+    vi.stubEnv("AVAGUARD_AI_PROMPT_VERSION", "9");
+    clearExplainRuntime();
+    expect(getExplainRuntime().isAiEnabled()).toBe(false);
+  });
+
+  it("supports cross-instance POST /api/explain with language='vi' via HMAC token and rejects invalid languages", async () => {
+    const body = parseReportBody(vector);
+    const hash = reportHash(body);
+    let runtimeBCalls = 0;
+
+    vi.stubEnv("FUJI_RPC_URL", "http://127.0.0.1:8545");
+    reportHook.overrideCompleteBody = body;
+
+    (globalThis as Record<symbol, unknown>)[RUNTIME_KEY] = createExplainRuntime(
+      {
+        enabled: true,
+        promptVersion: EXPLAIN_PROMPT_VERSION_V3,
+        tokenSecret: STRONG_SECRET,
+        provider: {
+          model: "gemini-3.5-flash-lite",
+          async explain() {
+            throw new Error("scan() must not call provider");
+          },
+        },
+      },
+    );
+
+    const scanRes = await scan(body.address);
+    expect(scanRes.ok).toBe(true);
+    if (!scanRes.ok || scanRes.data.status !== "complete") {
+      throw new Error("Expected complete scan");
+    }
+    expect(scanRes.data.aiPromptVersion).toBe("3");
+    const token = scanRes.data.explainToken!;
+
+    (globalThis as Record<symbol, unknown>)[RUNTIME_KEY] = createExplainRuntime(
+      {
+        enabled: true,
+        promptVersion: EXPLAIN_PROMPT_VERSION_V3,
+        tokenSecret: STRONG_SECRET,
+        provider: {
+          model: "gemini-3.5-flash-lite",
+          async explain(input, opts) {
+            runtimeBCalls++;
+            return makeValidV3Selection(input, opts.language ?? "en");
+          },
+        },
+      },
+    );
+
+    const badLang = await POST(
+      new Request("https://ava-guard.example/api/explain", {
+        method: "POST",
+        body: JSON.stringify({
+          reportHash: hash,
+          explainToken: token,
+          language: "fr",
+        }),
+      }),
+    );
+    expect(badLang.status).toBe(400);
+    expect(runtimeBCalls).toBe(0);
+
+    const viRes = await POST(
+      new Request("https://ava-guard.example/api/explain", {
+        method: "POST",
+        body: JSON.stringify({
+          reportHash: hash,
+          explainToken: token,
+          language: "vi",
+        }),
+      }),
+    );
+    expect(viRes.status).toBe(200);
+    const viData = (await viRes.json()) as {
+      ok: boolean;
+      explanation: {
+        provenance: string;
+        promptVersion?: string;
+        language?: string;
+        aiSummary?: string;
+        findings: Array<{ aiNote?: string }>;
+      };
+    };
+    expect(viData.ok).toBe(true);
+    expect(viData.explanation.provenance).toBe("ai-assisted");
+    expect(viData.explanation.promptVersion).toBe("3");
+    expect(viData.explanation.language).toBe("vi");
+    expect(viData.explanation.aiSummary).toContain("10 / 100");
+    expect(viData.explanation.findings[0].aiNote).toBeTruthy();
+    expect(runtimeBCalls).toBe(1);
   });
 });
